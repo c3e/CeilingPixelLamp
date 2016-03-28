@@ -16,14 +16,14 @@ uint16_t hue = 0;					// current Hue color
 const uint8_t autoCycle = 0; // color cycle auto switch
 uint8_t sign = 1; // current direction of auto color cycle
 
-const uint8_t PROBENUMBER = 5; // (0-254) number of distance probes
+const uint8_t PROBENUMBER = 5; // number of distance probes (0-254) 
 uint8_t probes[PROBENUMBER];
 uint8_t currentProbe = 0;
 
 const uint8_t echoPin = 7; // Echo Pin
 const uint8_t trigPin = 8; // Trigger Pin
-const uint8_t maximumRange = 60; // Maximum range needed in cm
 const uint8_t minimumRange = 0; // Minimum range needed in cm
+const uint8_t maximumRange = 60; // Maximum range needed in cm
 long duration = 0;
 long distance = 0;
 long distancesmooth = 0; // Duration used to calculate distance
