@@ -2,127 +2,109 @@
 #include <Metro.h>
 
 const uint8_t LEDPin = 4;  	// Digital output pin (default: 7)
-const uint8_t LEDCount = 4;	// Number of LEDs to drive (default: 9)
+const uint8_t LEDCount = 16;	// Number of LEDs to drive (default: 9)
 WS2812 LED(LEDCount); 
 cRGB ledValue;
 const uint8_t saturation = 255; 	// color saturation
-uint8_t brightness = 0; 			// current brightness
+uint8_t brightness = 0; 			// start / current brightness
 const uint8_t brightnessMin = 0;	// lowest limit of led brightness
 const uint8_t brightnessMax = 64;	// highest limit of led brightness
-uint8_t rgbColor[3] = {0,0,0}; 		// Default RGB values
-const uint16_t hueRange = 768;		// Hue range (3x255 from RGB)
+uint8_t rgbColor[3] = {0,0,0}; 		// inital RGB values
+const uint16_t hueRange = 768;		// cue color range (3x255 from RGB)
 uint16_t hue = 0;					// current Hue color
 
 const uint8_t autoCycle = 0; // color cycle auto switch
-uint8_t sign = 1; // current direction of auto color cycle
-
-const uint8_t PROBENUMBER = 5; // number of distance probes (0-254) 
-uint8_t probes[PROBENUMBER];
-uint8_t currentProbe = 0;
+uint8_t autoCycleDirection = 1; // current direction of auto color cycle
 
 const uint8_t echoPin = 7; // Echo Pin
 const uint8_t trigPin = 8; // Trigger Pin
 const uint8_t minimumRange = 0; // Minimum range needed in cm
-const uint8_t maximumRange = 60; // Maximum range needed in cm
-long duration = 0;
-long distance = 0;
-long distancesmooth = 0; // Duration used to calculate distance
-Metro sonicMetro = Metro(50); // Metro based refresh in milliseconds
+const uint8_t maximumRange = 40; // Maximum range needed in cm
+long duration = 0; // ultra sonic sensor echo duration
+long distance = 0; // ultra sonic sensor distance
+Metro sonicMetro = Metro(150); // Metro based refresh in milliseconds
 
-uint8_t noEvent = 1;
-Metro sonicLastChange = Metro(500); // inactive timer
+uint8_t getNewColor = 0; // trigger flag for new color generation based on distance
+uint8_t FadingIn = 0; // trigger flag for automatic fade in
+uint8_t FadingOut = 0; // trigger flag for automatic fade out
+Metro sonicLastChange = Metro(1000); // inactive timer
 Metro fadeMetro = Metro(25); // fade in and out refresh metro timer
 
-void hsb2rgb(uint16_t index, uint8_t sat, uint8_t bright, uint8_t color[3]); // Instantiate hsb2rgb and it's variables  a.k.a  Hue to RGB
+void refreshRawDistance(); // get raw distance from ultra sonic sensor
+void hsb2rgb(uint16_t index, uint8_t sat, uint8_t bright, uint8_t color[3]); // convert HSB to RGB color
 
 void setup() {
 	// supersonic sensor pin setup
-	pinMode(trigPin, OUTPUT);
-	pinMode(echoPin, INPUT);
+	pinMode(trigPin, OUTPUT); // set ultrasonic sensor trigger pin to output
+	pinMode(echoPin, INPUT); // set ultrasonic sensor echo pin to input
 
 	// LED pin and color order setup
-	LED.setOutput(LEDPin); // Digital Pin 4
-	LED.setColorOrderRGB();  // Uncomment for RGB color order
-	//LED.setColorOrderBRG();  // Uncomment for BRG color order
-	//LED.setColorOrderGRB();  // Uncomment for GRB color order (Default; will be used if none other is defined.)
-
-	// fill probes with zeros at startup
-	for(uint8_t i=0; i< PROBENUMBER; ++i) {
-	    probes[i] = 0;
-	}
+	LED.setOutput(LEDPin); // set WS2812B pin for library
+	LED.setColorOrderRGB();  // RGB color order
+	//LED.setColorOrderBRG();  // BRG color order
+	//LED.setColorOrderGRB();  // GRB color order (Default; will be used if none other is defined.)
 }
 
 void loop() {
-	if(autoCycle) {
-		if (sign) {
+	if(FadingIn == 1) { // still fading in?
+		if (brightness < brightnessMax) { // current brightness still under max brightness?
+			if(fadeMetro.check()) { // is it time to fade?
+				++brightness; // increase brightness by one
+				fadeMetro.reset(); // reset fade wait timer for next round
+			}
+		}
+		else if(brightness == brightnessMax) { // current brightness reached max brightness?
+			FadingIn = 0; // stop fading in
+		}
+	}
+	else if(FadingOut == 1) { // still fading out?
+		if (brightness > brightnessMin) { // current brightness still over min brightness?
+			if(fadeMetro.check()) { // is it time to fade?
+				--brightness; // decrease brightness by one
+				fadeMetro.reset(); // reset fade wait timer for next round
+			}
+		}
+		else if(brightness == brightnessMin) { // current brightness reached min brightness?
+			FadingOut = 0; // stop fading out
+		}
+	}
+	else if(FadingOut == 1 && FadingIn == 1) { // something got wrong, better reset both fades
+		FadingIn = 0; // stop fading in
+		FadingOut = 0; // stop fading out
+	}
+
+	if(autoCycle == 1) {
+		if (autoCycleDirection == 1) {
 			++hue;
 			if (hue == hueRange) 
-				sign = 0; 
+				autoCycleDirection = 0; 
 		}
 		else {
 			--hue;
 			if (hue == 0)
-				sign = 1;
+				autoCycleDirection = 1;
 		}
 	}
 	else {
-		if( sonicMetro.check() ) {
-			/* The following trigPin/echoPin cycle is used to determine the
-				distance of the nearest object by bouncing soundwaves off of it. */ 
-			digitalWrite(trigPin, LOW); 
-			delayMicroseconds(2);
-			digitalWrite(trigPin, HIGH);
-			delayMicroseconds(10);
-			digitalWrite(trigPin, LOW);
-			duration = pulseIn(echoPin, HIGH);
-			// Calculate the distance (in cm) based on the speed of sound.
-			distance = duration / 58.2;
+		if(sonicMetro.check() ) { // check if ultra-sonic-sensor refresh timer breached
+			refreshRawDistance(); // get current distance from ultra-sonic-sensor
+			// "inside of range" logic
+			if (distance > minimumRange && distance < maximumRange) {
+				sonicLastChange.reset(); // reset last change timer to keep current color active
 
-			if (distance >= maximumRange || distance <= minimumRange){
-				// "out of range" logic
-				// nothing to do right now :(
-			}
-			else {
-				// "inside of range" logic
-				if(currentProbe < PROBENUMBER) {
-					probes[currentProbe] = distance;	
-					++currentProbe;
-				} else {
-					currentProbe = 0;
+				if(getNewColor == 1) {
+					hue = map(distance, minimumRange, maximumRange, 0, hueRange); //
+					getNewColor = 0; // queue new color request
+					FadingIn = 1; // queue fade in effect
 				}
-				sonicLastChange.reset(); // reset last change timer
-				noEvent = 0;
 			}
-		} // end if (sonicMetro.check())
+			sonicMetro.reset(); // restart ultra-sonic-sensor request timer
+		} // end if (sonicMetro.check())	
 
-	    distancesmooth = 0; // reset distance smooth value
-		for(uint8_t i=0; i < PROBENUMBER; ++i) {
-			distancesmooth += probes[i];
-		}
-		distancesmooth = distancesmooth / PROBENUMBER;
-		// map distance of sensor to color range
-		hue = map(distancesmooth, minimumRange, maximumRange, 0, hueRange);
-	}
-
-
-	if(sonicLastChange.check() && !noEvent) {
-		noEvent = 1;
-	}
-
-	if(noEvent) {
-		if (brightness > brightnessMin) {
-			if(fadeMetro.check()) {
-				--brightness;
-				fadeMetro.reset();
-			}
-		}
-	}
-	else {
-		if (brightness < brightnessMax) {
-			if(fadeMetro.check()) {
-				++brightness;
-				fadeMetro.reset();
-			}
+		// check if inactive timer ended
+		if(sonicLastChange.check()) {
+			getNewColor = 1; // queue new color request
+			FadingOut = 1; // queue fade out effect
 		}
 	}
 
@@ -137,47 +119,31 @@ void loop() {
 	}
 
 	LED.sync(); // Sends the data to the LED strip
-	//delay(10); // Wait (ms) to breath
+}
+
+void refreshRawDistance(){
+	/* The following trigPin/echoPin cycle is used to determine the
+		distance of the nearest object by bouncing soundwaves off of it. */ 
+	digitalWrite(trigPin, LOW); 
+	delayMicroseconds(2);
+	digitalWrite(trigPin, HIGH);
+	delayMicroseconds(10);
+	digitalWrite(trigPin, LOW);
+	duration = pulseIn(echoPin, HIGH);
+	// Calculate the distance (in cm) based on the speed of sound.
+	distance = duration / 58.2;
 }
 
 void hsb2rgb(uint16_t index, uint8_t sat, uint8_t bright, uint8_t color[3]) {
-	uint16_t r_temp, g_temp, b_temp;
-	uint8_t index_mod;
-	uint8_t inverse_sat = (sat ^ 255);
-
-	index = index % 768;
-	index_mod = index % 256;
-
-	if (index < 256) {
-		r_temp = index_mod ^ 255;
-		g_temp = index_mod;
-		b_temp = 0;
-	}
-	else if (index < 512) {
-		r_temp = 0;
-		g_temp = index_mod ^ 255;
-		b_temp = index_mod;
-	}
-	else if ( index < 768) {
-		r_temp = index_mod;
-		g_temp = 0;
-		b_temp = index_mod ^ 255;
-	}
-	else {
-		r_temp = 0;
-		g_temp = 0;
-		b_temp = 0;
-	}
-	// calculate saturation
-	r_temp = ((r_temp * sat) / 255) + inverse_sat;
-	g_temp = ((g_temp * sat) / 255) + inverse_sat;
-	b_temp = ((b_temp * sat) / 255) + inverse_sat;
-	// calculate brightness
-	r_temp = (r_temp * bright) / 255;
-	g_temp = (g_temp * bright) / 255;
-	b_temp = (b_temp * bright) / 255;
-
-	rgbColor[0] = (uint8_t)r_temp;
-	rgbColor[1] = (uint8_t)g_temp;
-	rgbColor[2] = (uint8_t)b_temp;
+    uint8_t temp[5], n = (index >> 8) % 3;
+	// %3 not needed if input is constrained, but may be useful for color cycling and/or if modulo constant is fast
+    uint8_t x = ((((index & 255) * sat) >> 8) * bright) >> 8;
+	// shifts may be added for added speed and precision at the end if fast 32 bit calculation is available
+    uint8_t s = ((256 - sat) * bright) >> 8;
+    temp[0] = temp[3] = s;
+    temp[1] = temp[4] = x + s;
+    temp[2] = bright - x;
+    color[0] = temp[n + 2];
+    color[1] = temp[n + 1];
+    color[2] = temp[n];
 }
