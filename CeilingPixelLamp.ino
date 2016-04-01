@@ -1,5 +1,4 @@
 #include <WS2812.h>
-#include <Metro.h>
 
 #if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__)
 //Code in here will only be compiled if an Arduino Uno (or older) is used.
@@ -50,16 +49,21 @@ uint8_t autoCycleDirection = 1; // current direction of auto color cycle
 // ultra sonic sensor
 const uint8_t minimumRange = 0; // Minimum range needed in cm
 const uint8_t maximumRange = 50; // Maximum range needed in cm
-long duration = 0; // ultra sonic sensor echo duration
-long distance = 0; // ultra sonic sensor distance
-Metro sonicMetro = Metro(50); // refresh time in ms for sensor
+uint32_t duration = 0; // ultra sonic sensor echo duration
+uint32_t distance = 0; // ultra sonic sensor distance
+//Metro sonicMetro = Metro(50); // refresh time in ms for sensor
+uint32_t sonicPrevMillis = 0;
+uint32_t sonicInterval = 100;
 
 // program logic related variables
 uint8_t getNewColor = 0; // trigger flag for new color generation based on distance
 uint8_t FadingIn = 0; // trigger flag for automatic fade in
 uint8_t FadingOut = 0; // trigger flag for automatic fade out
-Metro fadeMetro = Metro(25); // fade in and out refresh metro timer (ms till next increase)
-Metro sonicLastChange = Metro(1000); // inactive timer (ms wait time before marked as inactive)
+uint32_t fadePrevMillis = 0;
+uint32_t fadeInterval = 25; // fade in and out refresh interval (ms till next increase)
+uint32_t sonicLastPrevMillis = 0;
+uint32_t sonicLastInterval = 1000; // ultrasonic sensor inactive interval
+
 
 void refreshRawDistance(); // get raw distance from ultra sonic sensor
 void hsb2rgb(uint16_t index, uint8_t sat, uint8_t bright, uint8_t color[3]); // convert HSB to RGB color
@@ -77,29 +81,31 @@ void setup() {
 }
 
 void loop() {
+	uint32_t currentMillis = millis();
+
 	if(FadingIn == 1) { // still fading in?
-		if (brightness < brightnessMax) { // current brightness still under max brightness?
-			if(fadeMetro.check()) { // is it time to fade?
+		if (brightness < brightnessMax) { // current brightness still under max brightness ?
+  			if (currentMillis - fadePrevMillis > fadeInterval) { // is it time to fade ?
 				++brightness; // increase brightness by one
-				fadeMetro.reset(); // reset fade wait timer for next round
+				fadePrevMillis = currentMillis; // save the last time the hue faded one step
 			}
 		}
-		else if(brightness == brightnessMax) { // current brightness reached max brightness?
+		else if(brightness == brightnessMax) { // current brightness reached max brightness ?
 			FadingIn = 0; // stop fading in
 		}
 	}
 	else if(FadingOut == 1) { // still fading out?
 		if (brightness > brightnessMin) { // current brightness still over min brightness?
-			if(fadeMetro.check()) { // is it time to fade?
+			if (currentMillis - fadePrevMillis > fadeInterval) { // is it time to fade?
 				--brightness; // decrease brightness by one
-				fadeMetro.reset(); // reset fade wait timer for next round
+				fadePrevMillis = currentMillis; // save the last time the hue faded one step
 			}
 		}
-		else if(brightness == brightnessMin) { // current brightness reached min brightness?
+		else if(brightness == brightnessMin) { // current brightness reached min brightness ?
 			FadingOut = 0; // stop fading out
 		}
 	}
-	else if(FadingOut == 1 && FadingIn == 1) { // something got wrong, better reset both fades
+	else if(FadingOut == 1 && FadingIn == 1) { // something got wrong, you need to chose one
 		FadingIn = 0; // stop fading in
 		FadingOut = 0; // stop fading out
 	}
@@ -107,34 +113,35 @@ void loop() {
 	if(autoCycle == 1) { // cycle through hue color wheel?
 		if (autoCycleDirection == 1) { // cycle forward ...
 			++hue; // increase hue by one
-			if (hue == hueRange) // reached the end limit of hue?
+			if (hue == hueRange) { // reached the end limit of hue?
 				autoCycleDirection = 0; // change direction to backward
+			}
 		}
 		else { // ... or backwards ?
 			--hue; // decrease hue by one
-			if (hue == 0) // reached start limit of hue ?
+			if (hue == 0) { // reached start limit of hue ?
 				autoCycleDirection = 1; // change direction to forward
+			}
 		}
 	}
 	else {
-		if(sonicMetro.check() ) { // check if ultra-sonic-sensor refresh timer breached
+		// check if ultra-sonic-sensor refresh interval breached
+		if (currentMillis - sonicPrevMillis > sonicInterval) {
 			refreshRawDistance(); // get current distance from ultra-sonic-sensor
 			// "inside of range" logic
 			if (distance > minimumRange && distance < maximumRange) {
-				sonicLastChange.reset(); // reset last change timer to keep current color active
-
 				if(getNewColor == 1) {
 					// map distance 
 					hue = map(distance, minimumRange, maximumRange, 0, hueRange);
 					getNewColor = 0; // queue new color request
 					FadingIn = 1; // queue fade in effect
+					sonicLastPrevMillis = currentMillis;
 				}
 			}
-			sonicMetro.reset(); // restart ultra-sonic-sensor request timer
-		} // end if (sonicMetro.check())	
-
+			sonicPrevMillis = currentMillis; // save current ultra-sonic-sensor check time
+		} // end if (currentMillis - sonicPrevMillis > sonicInterval) 
 		// check if inactive timer ended
-		if(sonicLastChange.check()) {
+		if (currentMillis - sonicLastPrevMillis > sonicLastInterval) {	
 			getNewColor = 1; // queue new color request
 			FadingOut = 1; // queue fade out effect
 		}
