@@ -32,6 +32,5 @@ Because of the limited number of useable / available pins (and some other hardwa
 we are testing right now the use of SPI or I2C for communication between the single nodes.
 
 External Libraries:
-- Metro - https://github.com/thomasfredericks/Metro-Arduino-Wiring
 - Light_WS2812 - https://github.com/cpldcpu/light_ws2812
 - TinyWireM - https://github.com/adafruit/TinyWireM
