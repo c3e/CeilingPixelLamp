@@ -1,45 +1,76 @@
 #include <WS2812.h>
 #include <Metro.h>
 
-const uint8_t LEDPin = 4;  	// Digital output pin (default: 7)
-const uint8_t LEDCount = 16;	// Number of LEDs to drive (default: 9)
-WS2812 LED(LEDCount); 
-cRGB ledValue;
+#if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__)
+//Code in here will only be compiled if an Arduino Uno (or older) is used.
+#define LEDRGBPIN 4 // WS2812b, digital
+#define LEDWHITEPIN 5 // white led, PWM
+#define ECHOPIN 7 // Echo pin, digital
+#define TRIGPIN 8 // Trigger pin, digital
+#define I2CSDAPIN 18 // I2C SDA, Analog in
+#define I2CSCLPIN 19 // I2C SCL, Analog in
+#endif
+
+#if defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega16U4__)
+//Code in here will only be compiled if an Arduino Leonardo is used.
+#define LEDRGBPIN 4 // WS2812b, Analog In
+#define LEDWHITEPIN 5 // white led, PWM
+#define ECHOPIN 7 // Echo pin, digital
+#define TRIGPIN 8 // Trigger pin, Analog In
+#define I2CSDAPIN 2 // I2C SDA, Analog in
+#define I2CSCLPIN 3 // I2C SCL, PWM
+#endif
+
+#if defined(__AVR_ATtiny85__) || defined(__AVR_ATtiny45__)
+//Code in here will only be compiled if an Arduino Tiny45/85 is used.
+#define LEDRGBPIN 1 // WS2812b, , PWM (LED on Model A)
+#define LEDWHITEPIN 4 // white led, PWM, Analog (also used for USB- when USB is in use)
+#define ECHOPIN 3 // ultrasonic echo, Analog In (also used for USB+ when USB is in use)
+#define TRIGPIN 5 // ultrasonic trigger, Analog in
+#define I2CSDAPIN 0 // I2C SDA, PWM (LED on Model B)
+#define I2CSCLPIN 2 // I2C SCL, Analog in
+#endif
+
+// LED related variables
+const uint8_t LEDCount = 16; // Number of LEDs to drive (default: 9)
+WS2812 LED(LEDCount); // init the WS2812 LED libary with X LED's
+cRGB ledValue; // holds the RGB color values
 const uint8_t saturation = 255; 	// color saturation
 uint8_t brightness = 0; 			// start / current brightness
 const uint8_t brightnessMin = 0;	// lowest limit of led brightness
-const uint8_t brightnessMax = 64;	// highest limit of led brightness
-uint8_t rgbColor[3] = {0,0,0}; 		// inital RGB values
-const uint16_t hueRange = 768;		// cue color range (3x255 from RGB)
+const uint8_t brightnessMax = 32;	// highest limit of led brightness
+uint8_t rgbColor[3] = {0,0,0}; 		// inital RGB values buffer array
+const uint16_t hueRange = 768;		// hue color range (3x255 from RGB)
 uint16_t hue = 0;					// current Hue color
 
+// auto cycle color / rainbow wheel
 const uint8_t autoCycle = 0; // color cycle auto switch
 uint8_t autoCycleDirection = 1; // current direction of auto color cycle
 
-const uint8_t echoPin = 7; // Echo Pin
-const uint8_t trigPin = 8; // Trigger Pin
+// ultra sonic sensor
 const uint8_t minimumRange = 0; // Minimum range needed in cm
-const uint8_t maximumRange = 40; // Maximum range needed in cm
+const uint8_t maximumRange = 50; // Maximum range needed in cm
 long duration = 0; // ultra sonic sensor echo duration
 long distance = 0; // ultra sonic sensor distance
-Metro sonicMetro = Metro(150); // Metro based refresh in milliseconds
+Metro sonicMetro = Metro(50); // refresh time in ms for sensor
 
+// program logic related variables
 uint8_t getNewColor = 0; // trigger flag for new color generation based on distance
 uint8_t FadingIn = 0; // trigger flag for automatic fade in
 uint8_t FadingOut = 0; // trigger flag for automatic fade out
-Metro sonicLastChange = Metro(1000); // inactive timer
-Metro fadeMetro = Metro(25); // fade in and out refresh metro timer
+Metro fadeMetro = Metro(25); // fade in and out refresh metro timer (ms till next increase)
+Metro sonicLastChange = Metro(1000); // inactive timer (ms wait time before marked as inactive)
 
 void refreshRawDistance(); // get raw distance from ultra sonic sensor
 void hsb2rgb(uint16_t index, uint8_t sat, uint8_t bright, uint8_t color[3]); // convert HSB to RGB color
 
 void setup() {
 	// supersonic sensor pin setup
-	pinMode(trigPin, OUTPUT); // set ultrasonic sensor trigger pin to output
-	pinMode(echoPin, INPUT); // set ultrasonic sensor echo pin to input
+	pinMode(ECHOPIN, INPUT); // set ultrasonic sensor echo pin to input
+	pinMode(TRIGPIN, OUTPUT); // set ultrasonic sensor trigger pin to output
 
 	// LED pin and color order setup
-	LED.setOutput(LEDPin); // set WS2812B pin for library
+	LED.setOutput(LEDRGBPIN); // set WS2812B pin for library
 	LED.setColorOrderRGB();  // RGB color order
 	//LED.setColorOrderBRG();  // BRG color order
 	//LED.setColorOrderGRB();  // GRB color order (Default; will be used if none other is defined.)
@@ -72,17 +103,17 @@ void loop() {
 		FadingIn = 0; // stop fading in
 		FadingOut = 0; // stop fading out
 	}
-
-	if(autoCycle == 1) {
-		if (autoCycleDirection == 1) {
-			++hue;
-			if (hue == hueRange) 
-				autoCycleDirection = 0; 
+	
+	if(autoCycle == 1) { // cycle through hue color wheel?
+		if (autoCycleDirection == 1) { // cycle forward ...
+			++hue; // increase hue by one
+			if (hue == hueRange) // reached the end limit of hue?
+				autoCycleDirection = 0; // change direction to backward
 		}
-		else {
-			--hue;
-			if (hue == 0)
-				autoCycleDirection = 1;
+		else { // ... or backwards ?
+			--hue; // decrease hue by one
+			if (hue == 0) // reached start limit of hue ?
+				autoCycleDirection = 1; // change direction to forward
 		}
 	}
 	else {
@@ -93,7 +124,8 @@ void loop() {
 				sonicLastChange.reset(); // reset last change timer to keep current color active
 
 				if(getNewColor == 1) {
-					hue = map(distance, minimumRange, maximumRange, 0, hueRange); //
+					// map distance 
+					hue = map(distance, minimumRange, maximumRange, 0, hueRange);
 					getNewColor = 0; // queue new color request
 					FadingIn = 1; // queue fade in effect
 				}
@@ -122,14 +154,14 @@ void loop() {
 }
 
 void refreshRawDistance(){
-	/* The following trigPin/echoPin cycle is used to determine the
+	/* The following TRIGPIN/ECHOPIN cycle is used to determine the
 		distance of the nearest object by bouncing soundwaves off of it. */ 
-	digitalWrite(trigPin, LOW); 
+	digitalWrite(TRIGPIN, LOW); 
 	delayMicroseconds(2);
-	digitalWrite(trigPin, HIGH);
+	digitalWrite(TRIGPIN, HIGH);
 	delayMicroseconds(10);
-	digitalWrite(trigPin, LOW);
-	duration = pulseIn(echoPin, HIGH);
+	digitalWrite(TRIGPIN, LOW);
+	duration = pulseIn(ECHOPIN, HIGH); // wait for echo wave and return the duration
 	// Calculate the distance (in cm) based on the speed of sound.
 	distance = duration / 58.2;
 }
