@@ -53,19 +53,19 @@ uint32_t duration = 0; // ultra sonic sensor echo duration
 uint32_t distance = 0; // ultra sonic sensor distance
 //Metro sonicMetro = Metro(50); // refresh time in ms for sensor
 uint32_t sonicPrevMillis = 0;
-uint32_t sonicInterval = 100;
+const uint32_t sonicInterval = 100;
 
 // program logic related variables
 uint8_t getNewColor = 0; // trigger flag for new color generation based on distance
 uint8_t FadingIn = 0; // trigger flag for automatic fade in
 uint8_t FadingOut = 0; // trigger flag for automatic fade out
 uint32_t fadePrevMillis = 0;
-uint32_t fadeInterval = 25; // fade in and out refresh interval (ms till next increase)
+const uint32_t fadeInterval = 25; // fade in and out refresh interval (ms till next increase)
 uint32_t sonicLastPrevMillis = 0;
-uint32_t sonicLastInterval = 1000; // ultrasonic sensor inactive interval
+const uint32_t sonicLastInterval = 1000; // ultrasonic sensor inactive interval
 
 
-void refreshRawDistance(); // get raw distance from ultra sonic sensor
+void refreshRawDistance(); // get raw distance from ultrasonic sensor
 void hsb2rgb(uint16_t index, uint8_t sat, uint8_t bright, uint8_t color[3]); // convert HSB to RGB color
 
 void setup() {
@@ -75,16 +75,17 @@ void setup() {
 
 	// LED pin and color order setup
 	LED.setOutput(LEDRGBPIN); // set WS2812B pin for library
-	LED.setColorOrderRGB();  // RGB color order
+	//LED.setColorOrderRGB();  // RGB color order
 	//LED.setColorOrderBRG();  // BRG color order
-	//LED.setColorOrderGRB();  // GRB color order (Default; will be used if none other is defined.)
+	LED.setColorOrderGRB();  // GRB color order (Default; will be used if none other is defined.)
 }
 
 void loop() {
-	uint32_t currentMillis = millis();
+	uint32_t currentMillis = millis(); // get current millis // get current millis
 
 	if(FadingIn == 1) { // still fading in?
 		if (brightness < brightnessMax) { // current brightness still under max brightness ?
+			currentMillis = millis(); // get current millis
   			if (currentMillis - fadePrevMillis > fadeInterval) { // is it time to fade ?
 				++brightness; // increase brightness by one
 				fadePrevMillis = currentMillis; // save the last time the hue faded one step
@@ -96,6 +97,7 @@ void loop() {
 	}
 	else if(FadingOut == 1) { // still fading out?
 		if (brightness > brightnessMin) { // current brightness still over min brightness?
+			currentMillis = millis(); // get current millis
 			if (currentMillis - fadePrevMillis > fadeInterval) { // is it time to fade?
 				--brightness; // decrease brightness by one
 				fadePrevMillis = currentMillis; // save the last time the hue faded one step
@@ -125,23 +127,26 @@ void loop() {
 		}
 	}
 	else {
+		currentMillis = millis(); // get current millis
 		// check if ultra-sonic-sensor refresh interval breached
 		if (currentMillis - sonicPrevMillis > sonicInterval) {
-			refreshRawDistance(); // get current distance from ultra-sonic-sensor
+			refreshRawDistance(); // get current distance from ultrasonic sensor
 			// "inside of range" logic
 			if (distance > minimumRange && distance < maximumRange) {
+				currentMillis = millis(); // get current millis
 				if(getNewColor == 1) {
 					// map distance 
 					hue = map(distance, minimumRange, maximumRange, 0, hueRange);
 					getNewColor = 0; // queue new color request
 					FadingIn = 1; // queue fade in effect
-					sonicLastPrevMillis = currentMillis;
 				}
+				sonicLastPrevMillis = currentMillis;
 			}
-			sonicPrevMillis = currentMillis; // save current ultra-sonic-sensor check time
+			sonicPrevMillis = currentMillis; // save current ultrasonic sensor check time
 		} // end if (currentMillis - sonicPrevMillis > sonicInterval) 
-		// check if inactive timer ended
-		if (currentMillis - sonicLastPrevMillis > sonicLastInterval) {	
+		currentMillis = millis(); // get current millis
+		// check last ultrasonic sensor event interval
+		if (currentMillis - sonicLastPrevMillis > sonicLastInterval) {
 			getNewColor = 1; // queue new color request
 			FadingOut = 1; // queue fade out effect
 		}
@@ -169,8 +174,9 @@ void refreshRawDistance(){
 	delayMicroseconds(10);
 	digitalWrite(TRIGPIN, LOW);
 	duration = pulseIn(ECHOPIN, HIGH); // wait for echo wave and return the duration
-	// Calculate the distance (in cm) based on the speed of sound.
-	distance = duration / 58.2;
+	// Calculate the distance (in centimeter or inches) based on the speed of sound.
+	//distance = duration / 74 / 2; // calculate inches
+	distance = duration / 29 / 2; // calculate centimeter
 }
 
 void hsb2rgb(uint16_t index, uint8_t sat, uint8_t bright, uint8_t color[3]) {
