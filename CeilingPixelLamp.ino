@@ -1,3 +1,6 @@
+#include <can.h>
+
+#include <Wire.h>
 #include <WS2812.h>
 
 #if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__)
@@ -68,92 +71,157 @@ const uint32_t sonicLastInterval = 1000; // ultrasonic sensor inactive interval
 void refreshRawDistance(); // get raw distance from ultrasonic sensor
 void hsb2rgb(uint16_t index, uint8_t sat, uint8_t bright, uint8_t color[3]); // convert HSB to RGB color
 
+/*
+Autocious Management
+MODE 0: distance sensor
+MODE 1: 12 cycles a slave ...ahem get led colors from i2c master
+
+*/
+uint8_t MODE = 0; //sets Mode to do nothing 
+//
+//
 void setup() {
 	// supersonic sensor pin setup
 	pinMode(ECHOPIN, INPUT); // set ultrasonic sensor echo pin to input
 	pinMode(TRIGPIN, OUTPUT); // set ultrasonic sensor trigger pin to output
 
 	// LED pin and color order setup
-	LED.setOutput(LEDRGBPIN); // set WS2812B pin for library
+	//LED.setOutput(LEDRGBPIN); // set WS2812B pin for library
 	//LED.setColorOrderRGB();  // RGB color order
 	//LED.setColorOrderBRG();  // BRG color order
-	LED.setColorOrderGRB();  // GRB color order (Default; will be used if none other is defined.)
+	//LED.setColorOrderGRB();  // GRB color order (Default; will be used if none other is defined.)
 
 	if(autoCycle == 1)
 		brightness = brightnessMax;
+  Serial.begin(9600);
+  Wire.begin(60);
+  Wire.onReceive(recvData);
+  Serial.print("Setup complete");
+}
+
+void log3( uint8_t a,uint8_t b,uint8_t c){
+  Serial.print("[");
+  Serial.print(a);
+  Serial.print(",");
+  Serial.print(b);
+  Serial.print(",");
+  Serial.print(c);
+  Serial.print("]");
+
+}
+
+/*
+ * PacketLayout:
+ * 0 - 47 byte: 16 * 3 color values
+ * 48 - 51 byte: color pwm
+ * 52 byte: white pwm
+ * 53 byte: 
+ *  bit 1: 
+ *    1: activate remote control
+ *    0: deactivate and switch to autacious mode
+ * 
+ * 
+*/
+void recvData (int count){
+  Serial.print("Got Values: ");
+  for ( uint8_t i = 0; i < count ; i++ ){
+    ledValue.r = Wire.read();
+    ledValue.b = Wire.read();
+    ledValue.g = Wire.read();
+    log3( ledValue.r,ledValue.g,ledValue.b);
+    Serial.print(", ");
+    LED.set_crgb_at(i/3, ledValue); // Set values at LED found at index i
+  }
+  LED.sync();
+  if ( count == 54 ) {
+   uint8_t x = Wire.read();
+   if ( x >> 7 == 1 ) {
+    MODE = 0;
+   } else {
+    MODE = 1;
+   }
+  }
+}
+
+int ledDistance () {
+  if(autoCycle == 1) { // cycle through hue color wheel?
+    if (autoCycleDirection == 1) { // cycle forward ...
+      ++hue; // increase hue by one
+      if (hue == hueRange) { // reached the end limit of hue?
+        autoCycleDirection = 0; // change direction to backward
+      }
+    }
+    else { // ... or backwards ?
+      --hue; // decrease hue by one
+      if (hue == 0) { // reached start limit of hue ?
+        autoCycleDirection = 1; // change direction to forward
+      }
+    }
+  }
+  else if(FadingIn == 1) { // still fading in?
+    if (brightness < brightnessMax) { // current brightness still under max brightness ?
+        if (millis() - fadePrevMillis > fadeInterval) { // is it time to fade ?
+        fadePrevMillis = millis(); // save the last time the hue faded one step
+        ++brightness; // increase brightness by one
+      }
+    }
+    else if(brightness == brightnessMax) { // current brightness reached max brightness ?
+      FadingIn = 0; // stop fading in
+    }
+  }
+  else if(FadingOut == 1) { // still fading out?
+    if (brightness > brightnessMin) { // current brightness still over min brightness?
+      if (millis() - fadePrevMillis > fadeInterval) { // is it time to fade?
+        fadePrevMillis = millis(); // save the last time the hue faded one step
+        --brightness; // decrease brightness by one
+      }
+    }
+    else if(brightness == brightnessMin) { // current brightness reached min brightness ?
+      FadingOut = 0; // stop fading out
+    }
+  }
+  else {
+    // check if ultra-sonic-sensor refresh interval breached
+    if (millis() - sonicPrevMillis > sonicInterval) {
+      sonicPrevMillis = millis(); // save current ultrasonic sensor check time
+      refreshRawDistance(); // get current distance from ultrasonic sensor
+      // "inside of range" logic
+      if (distance > minimumRange && distance < maximumRange) {
+        sonicLastPrevMillis = millis(); // save millis for distance inside limit
+        if(getNewColor == 1) {
+          // map distance 
+          hue = map(distance, minimumRange, maximumRange, 0, hueRange);
+          getNewColor = 0; // queue new color request
+          FadingIn = 1; // queue fade in effect
+        }
+      }
+    } // end if (currentMillis - sonicPrevMillis > sonicInterval)
+    // check last ultrasonic sensor event interval
+    if (millis() - sonicLastPrevMillis > sonicLastInterval) {
+      getNewColor = 1; // queue new color request
+      FadingOut = 1; // queue fade out effect
+    }
+  }
+
+  // convert hsb 2 rgb colors (hue, saturation, brightness, colorarray[r,g,b])
+  hsb2rgb(hue, saturation, brightness, rgbColor);
+  // push r,g,b values in LED buffer
+  ledValue.b = rgbColor[0];
+  ledValue.g = rgbColor[1];
+  ledValue.r = rgbColor[2];
+    
+  for(uint8_t i=0; i < LEDCount; ++i) {
+    LED.set_crgb_at(i, ledValue); // Set values at LED found at index i
+  }
+  LED.sync(); // Sends the data to the LED strip
 }
 
 void loop() {
-	if(autoCycle == 1) { // cycle through hue color wheel?
-		if (autoCycleDirection == 1) { // cycle forward ...
-			++hue; // increase hue by one
-			if (hue == hueRange) { // reached the end limit of hue?
-				autoCycleDirection = 0; // change direction to backward
-			}
-		}
-		else { // ... or backwards ?
-			--hue; // decrease hue by one
-			if (hue == 0) { // reached start limit of hue ?
-				autoCycleDirection = 1; // change direction to forward
-			}
-		}
+	if ( MODE == 1 ) {
+	  ledDistance();
+	} else {
+    delay (100);
 	}
-	else if(FadingIn == 1) { // still fading in?
-		if (brightness < brightnessMax) { // current brightness still under max brightness ?
-  			if (millis() - fadePrevMillis > fadeInterval) { // is it time to fade ?
-				fadePrevMillis = millis(); // save the last time the hue faded one step
-				++brightness; // increase brightness by one
-			}
-		}
-		else if(brightness == brightnessMax) { // current brightness reached max brightness ?
-			FadingIn = 0; // stop fading in
-		}
-	}
-	else if(FadingOut == 1) { // still fading out?
-		if (brightness > brightnessMin) { // current brightness still over min brightness?
-			if (millis() - fadePrevMillis > fadeInterval) { // is it time to fade?
-				fadePrevMillis = millis(); // save the last time the hue faded one step
-				--brightness; // decrease brightness by one
-			}
-		}
-		else if(brightness == brightnessMin) { // current brightness reached min brightness ?
-			FadingOut = 0; // stop fading out
-		}
-	}
-	else {
-		// check if ultra-sonic-sensor refresh interval breached
-		if (millis() - sonicPrevMillis > sonicInterval) {
-			sonicPrevMillis = millis(); // save current ultrasonic sensor check time
-			refreshRawDistance(); // get current distance from ultrasonic sensor
-			// "inside of range" logic
-			if (distance > minimumRange && distance < maximumRange) {
-				sonicLastPrevMillis = millis(); // save millis for distance inside limit
-				if(getNewColor == 1) {
-					// map distance 
-					hue = map(distance, minimumRange, maximumRange, 0, hueRange);
-					getNewColor = 0; // queue new color request
-					FadingIn = 1; // queue fade in effect
-				}
-			}
-		} // end if (currentMillis - sonicPrevMillis > sonicInterval)
-		// check last ultrasonic sensor event interval
-		if (millis() - sonicLastPrevMillis > sonicLastInterval) {
-			getNewColor = 1; // queue new color request
-			FadingOut = 1; // queue fade out effect
-		}
-	}
-
-	// convert hsb 2 rgb colors (hue, saturation, brightness, colorarray[r,g,b])
-	hsb2rgb(hue, saturation, brightness, rgbColor);
-	// push r,g,b values in LED buffer
-	for(uint8_t i=0; i < LEDCount; ++i) {
-		ledValue.b = rgbColor[0];
-		ledValue.g = rgbColor[1];
-		ledValue.r = rgbColor[2];
-		LED.set_crgb_at(i, ledValue); // Set values at LED found at index i
-	}
-
-	LED.sync(); // Sends the data to the LED strip
 }
 
 void refreshRawDistance(){
