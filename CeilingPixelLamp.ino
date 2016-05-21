@@ -101,21 +101,21 @@ void setup() {
 
 	if(autoCycle == 1)
 		brightness = brightnessMax;
-  
-  CAN0.begin(CAN_500KBPS);                       // init can bus : baudrate = 500k 
-  pinMode(5, INPUT); 
-  Serial.begin(9600);
-  Serial.print("Setup complete");
+	
+	CAN0.begin(CAN_500KBPS);                       // init can bus : baudrate = 500k 
+	pinMode(5, INPUT); 
+	Serial.begin(9600);
+	Serial.print("Setup complete");
 }
 
 void log3( uint8_t a,uint8_t b,uint8_t c){
-  Serial.print("[");
-  Serial.print(a);
-  Serial.print(",");
-  Serial.print(b);
-  Serial.print(",");
-  Serial.print(c);
-  Serial.print("]");
+	Serial.print("[");
+	Serial.print(a);
+	Serial.print(",");
+	Serial.print(b);
+	Serial.print(",");
+	Serial.print(c);
+	Serial.print("]");
 
 }
 
@@ -138,143 +138,143 @@ unsigned char barrierbuffer[48];
 
 
 void recvData (){
-  // Serial.print("Got Values: ");
-  
-  CAN0.readMsgBuf(&len, buf);
-  uint8_t control_bits = buf[0] & 3;
-  
-  if ( buf[0] >> 2  == ADDRESS && len == 8 && control_bits != 3){
-    
-    switch (control_bits) {
-      
-      case 0: //sync two
-        LED.set_crgb_at(buf[1] >> 4 , { buf[2],buf[3],buf[4] } );
-        LED.set_crgb_at( ( buf[1] & 15 ) >> 4 , { buf[5],buf[6],buf[7] } );
-        break;
-    
-      case 1: //wait for sync signal
-        barrierbuffer[ ( buf[1] >> 4 ) * 3 ] = buf[2];
-        barrierbuffer[ ( buf[1] >> 4 ) * 3 + 1 ] = buf[3];
-        barrierbuffer[ ( buf[1] >> 4 ) * 3 + 2 ] = buf[4];
-        barrierbuffer[ ( buf[1] & 15 ) * 3 ] = buf[5];
-        barrierbuffer[ ( buf[1] & 15 ) * 3 + 1 ] = buf[6];
-        barrierbuffer[ ( buf[1] & 15 ) * 3 + 2 ] = buf[7];
-        break;
-      
-      case 2: //sync
-        barrierbuffer[ ( buf[1] >> 4 ) * 3 ] = buf[2];
-        barrierbuffer[ ( buf[1] >> 4 ) * 3 + 1 ] = buf[3];
-        barrierbuffer[ ( buf[1] >> 4 ) * 3 + 2 ] = buf[4];
-        barrierbuffer[ ( buf[1] & 15 ) * 3 ] = buf[5];
-        barrierbuffer[ ( buf[1] & 15 ) * 3 + 1 ] = buf[6];
-        barrierbuffer[ ( buf[1] & 15 ) * 3 + 2 ] = buf[7];
-        for ( uint8_t i = 0; i < 16; i++ ){
-          LED.set_crgb_at( i, { barrierbuffer[i*3], barrierbuffer[i*3+1], barrierbuffer[i*3+2] } );
-        }
-        memset(barrierbuffer, 0, 48);
-        break;
-    }
-    LED.sync();
-  }
-  if ( control_bits == 3 ) {
-    if (buf[0] & 4 == 4 ) {
-       MODE = 1;
-    } else if ( buf[0] & 8 == 8 ) {
-       MODE = 0;
-    } else
-    
-    if ( buf[1] >> 2  == ADDRESS){
-      analogWrite(LEDWHITEPIN, buf[4]);
-    } else if ( ( ( buf[1] & 252) << 4 ) + ( buf[2] >> 4 ) == ADDRESS ){
-      analogWrite(LEDWHITEPIN, buf[5]);
-    } else if ( ( ( buf[2] & 15) << 2 ) + ( ( buf[3] & 192 ) >> 6 ) == ADDRESS ){
-      analogWrite(LEDWHITEPIN, buf[6]);
-    } else if ( buf[3] & 127 == ADDRESS ){
-      analogWrite(LEDWHITEPIN, buf[7]);
-    }
-  }
+	// Serial.print("Got Values: ");
+	
+	CAN0.readMsgBuf(&len, buf);
+	uint8_t control_bits = buf[0] & 3;
+	
+	if ( buf[0] >> 2  == ADDRESS && len == 8 && control_bits != 3){
+		
+		switch (control_bits) {
+			
+			case 0: //sync two
+				LED.set_crgb_at(buf[1] >> 4 , { buf[2],buf[3],buf[4] } );
+				LED.set_crgb_at( ( buf[1] & 15 ) >> 4 , { buf[5],buf[6],buf[7] } );
+				break;
+		
+			case 1: //wait for sync signal
+				barrierbuffer[ ( buf[1] >> 4 ) * 3 ] = buf[2];
+				barrierbuffer[ ( buf[1] >> 4 ) * 3 + 1 ] = buf[3];
+				barrierbuffer[ ( buf[1] >> 4 ) * 3 + 2 ] = buf[4];
+				barrierbuffer[ ( buf[1] & 15 ) * 3 ] = buf[5];
+				barrierbuffer[ ( buf[1] & 15 ) * 3 + 1 ] = buf[6];
+				barrierbuffer[ ( buf[1] & 15 ) * 3 + 2 ] = buf[7];
+				break;
+			
+			case 2: //sync
+				barrierbuffer[ ( buf[1] >> 4 ) * 3 ] = buf[2];
+				barrierbuffer[ ( buf[1] >> 4 ) * 3 + 1 ] = buf[3];
+				barrierbuffer[ ( buf[1] >> 4 ) * 3 + 2 ] = buf[4];
+				barrierbuffer[ ( buf[1] & 15 ) * 3 ] = buf[5];
+				barrierbuffer[ ( buf[1] & 15 ) * 3 + 1 ] = buf[6];
+				barrierbuffer[ ( buf[1] & 15 ) * 3 + 2 ] = buf[7];
+				for ( uint8_t i = 0; i < 16; i++ ){
+					LED.set_crgb_at( i, { barrierbuffer[i*3], barrierbuffer[i*3+1], barrierbuffer[i*3+2] } );
+				}
+				memset(barrierbuffer, 0, 48);
+				break;
+		}
+		LED.sync();
+	}
+	if ( control_bits == 3 ) {
+		if (buf[0] & 4 == 4 ) {
+			 MODE = 1;
+		} else if ( buf[0] & 8 == 8 ) {
+			 MODE = 0;
+		} else
+		
+		if ( buf[1] >> 2  == ADDRESS){
+			analogWrite(LEDWHITEPIN, buf[4]);
+		} else if ( ( ( buf[1] & 252) << 4 ) + ( buf[2] >> 4 ) == ADDRESS ){
+			analogWrite(LEDWHITEPIN, buf[5]);
+		} else if ( ( ( buf[2] & 15) << 2 ) + ( ( buf[3] & 192 ) >> 6 ) == ADDRESS ){
+			analogWrite(LEDWHITEPIN, buf[6]);
+		} else if ( buf[3] & 127 == ADDRESS ){
+			analogWrite(LEDWHITEPIN, buf[7]);
+		}
+	}
 }
 
 int ledDistance () {
-  if(autoCycle == 1) { // cycle through hue color wheel?
-    if (autoCycleDirection == 1) { // cycle forward ...
-      ++hue; // increase hue by one
-      if (hue == hueRange) { // reached the end limit of hue?
-        autoCycleDirection = 0; // change direction to backward
-      }
-    }
-    else { // ... or backwards ?
-      --hue; // decrease hue by one
-      if (hue == 0) { // reached start limit of hue ?
-        autoCycleDirection = 1; // change direction to forward
-      }
-    }
-  }
-  else if(FadingIn == 1) { // still fading in?
-    if (brightness < brightnessMax) { // current brightness still under max brightness ?
-        if (millis() - fadePrevMillis > fadeInterval) { // is it time to fade ?
-        fadePrevMillis = millis(); // save the last time the hue faded one step
-        ++brightness; // increase brightness by one
-      }
-    }
-    else if(brightness == brightnessMax) { // current brightness reached max brightness ?
-      FadingIn = 0; // stop fading in
-    }
-  }
-  else if(FadingOut == 1) { // still fading out?
-    if (brightness > brightnessMin) { // current brightness still over min brightness?
-      if (millis() - fadePrevMillis > fadeInterval) { // is it time to fade?
-        fadePrevMillis = millis(); // save the last time the hue faded one step
-        --brightness; // decrease brightness by one
-      }
-    }
-    else if(brightness == brightnessMin) { // current brightness reached min brightness ?
-      FadingOut = 0; // stop fading out
-    }
-  }
-  else {
-    // check if ultra-sonic-sensor refresh interval breached
-    if (millis() - sonicPrevMillis > sonicInterval) {
-      sonicPrevMillis = millis(); // save current ultrasonic sensor check time
-      refreshRawDistance(); // get current distance from ultrasonic sensor
-      // "inside of range" logic
-      if (distance > minimumRange && distance < maximumRange) {
-        sonicLastPrevMillis = millis(); // save millis for distance inside limit
-        if(getNewColor == 1) {
-          // map distance 
-          hue = map(distance, minimumRange, maximumRange, 0, hueRange);
-          getNewColor = 0; // queue new color request
-          FadingIn = 1; // queue fade in effect
-        }
-      }
-    } // end if (currentMillis - sonicPrevMillis > sonicInterval)
-    // check last ultrasonic sensor event interval
-    if (millis() - sonicLastPrevMillis > sonicLastInterval) {
-      getNewColor = 1; // queue new color request
-      FadingOut = 1; // queue fade out effect
-    }
-  }
+	if(autoCycle == 1) { // cycle through hue color wheel?
+		if (autoCycleDirection == 1) { // cycle forward ...
+			++hue; // increase hue by one
+			if (hue == hueRange) { // reached the end limit of hue?
+				autoCycleDirection = 0; // change direction to backward
+			}
+		}
+		else { // ... or backwards ?
+			--hue; // decrease hue by one
+			if (hue == 0) { // reached start limit of hue ?
+				autoCycleDirection = 1; // change direction to forward
+			}
+		}
+	}
+	else if(FadingIn == 1) { // still fading in?
+		if (brightness < brightnessMax) { // current brightness still under max brightness ?
+				if (millis() - fadePrevMillis > fadeInterval) { // is it time to fade ?
+				fadePrevMillis = millis(); // save the last time the hue faded one step
+				++brightness; // increase brightness by one
+			}
+		}
+		else if(brightness == brightnessMax) { // current brightness reached max brightness ?
+			FadingIn = 0; // stop fading in
+		}
+	}
+	else if(FadingOut == 1) { // still fading out?
+		if (brightness > brightnessMin) { // current brightness still over min brightness?
+			if (millis() - fadePrevMillis > fadeInterval) { // is it time to fade?
+				fadePrevMillis = millis(); // save the last time the hue faded one step
+				--brightness; // decrease brightness by one
+			}
+		}
+		else if(brightness == brightnessMin) { // current brightness reached min brightness ?
+			FadingOut = 0; // stop fading out
+		}
+	}
+	else {
+		// check if ultra-sonic-sensor refresh interval breached
+		if (millis() - sonicPrevMillis > sonicInterval) {
+			sonicPrevMillis = millis(); // save current ultrasonic sensor check time
+			refreshRawDistance(); // get current distance from ultrasonic sensor
+			// "inside of range" logic
+			if (distance > minimumRange && distance < maximumRange) {
+				sonicLastPrevMillis = millis(); // save millis for distance inside limit
+				if(getNewColor == 1) {
+					// map distance 
+					hue = map(distance, minimumRange, maximumRange, 0, hueRange);
+					getNewColor = 0; // queue new color request
+					FadingIn = 1; // queue fade in effect
+				}
+			}
+		} // end if (currentMillis - sonicPrevMillis > sonicInterval)
+		// check last ultrasonic sensor event interval
+		if (millis() - sonicLastPrevMillis > sonicLastInterval) {
+			getNewColor = 1; // queue new color request
+			FadingOut = 1; // queue fade out effect
+		}
+	}
 
-  // convert hsb 2 rgb colors (hue, saturation, brightness, colorarray[r,g,b])
-  hsb2rgb(hue, saturation, brightness, rgbColor);
-  // push r,g,b values in LED buffer
-  ledValue.b = rgbColor[0];
-  ledValue.g = rgbColor[1];
-  ledValue.r = rgbColor[2];
-    
-  for(uint8_t i=0; i < LEDCount; ++i) {
-    LED.set_crgb_at(i, ledValue); // Set values at LED found at index i
-  }
-  LED.sync(); // Sends the data to the LED strip
+	// convert hsb 2 rgb colors (hue, saturation, brightness, colorarray[r,g,b])
+	hsb2rgb(hue, saturation, brightness, rgbColor);
+	// push r,g,b values in LED buffer
+	ledValue.b = rgbColor[0];
+	ledValue.g = rgbColor[1];
+	ledValue.r = rgbColor[2];
+		
+	for(uint8_t i=0; i < LEDCount; ++i) {
+		LED.set_crgb_at(i, ledValue); // Set values at LED found at index i
+	}
+	LED.sync(); // Sends the data to the LED strip
 }
 
 void loop() {
 	if ( MODE == 1 ) {
-	  ledDistance();
+		ledDistance();
 	}
-  if (!digitalRead(5) && MODE == 0){
-    recvData();
-  }
+	if (!digitalRead(5) && MODE == 0){
+		recvData();
+	}
 }
 
 void refreshRawDistance(){
@@ -292,15 +292,15 @@ void refreshRawDistance(){
 }
 
 void hsb2rgb(uint16_t index, uint8_t sat, uint8_t bright, uint8_t color[3]) {
-    uint8_t temp[5], n = (index >> 8) % 3;
+		uint8_t temp[5], n = (index >> 8) % 3;
 	// %3 not needed if input is constrained, but may be useful for color cycling and/or if modulo constant is fast
-    uint8_t x = ((((index & 255) * sat) >> 8) * bright) >> 8;
+		uint8_t x = ((((index & 255) * sat) >> 8) * bright) >> 8;
 	// shifts may be added for added speed and precision at the end if fast 32 bit calculation is available
-    uint8_t s = ((256 - sat) * bright) >> 8;
-    temp[0] = temp[3] = s;
-    temp[1] = temp[4] = x + s;
-    temp[2] = bright - x;
-    color[0] = temp[n + 2];
-    color[1] = temp[n + 1];
-    color[2] = temp[n];
+		uint8_t s = ((256 - sat) * bright) >> 8;
+		temp[0] = temp[3] = s;
+		temp[1] = temp[4] = x + s;
+		temp[2] = bright - x;
+		color[0] = temp[n + 2];
+		color[1] = temp[n + 1];
+		color[2] = temp[n];
 }
