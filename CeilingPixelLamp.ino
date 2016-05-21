@@ -1,7 +1,10 @@
-#include <can.h>
-
+#include <mcp_can.h>
+#include <mcp_can_dfs.h>
+#include <SPI.h>
+//#include <can.h>
 #include <Wire.h>
 #include <WS2812.h>
+
 
 #if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__)
 //Code in here will only be compiled if an Arduino Uno (or older) is used.
@@ -77,9 +80,14 @@ MODE 0: distance sensor
 MODE 1: 12 cycles a slave ...ahem get led colors from i2c master
 
 */
-uint8_t MODE = 0; //sets Mode to do nothing 
+uint8_t MODE = 0; //sets Mode to do nothing
+uint8_t ADDRESS = 1; 
 //
 //
+
+MCP_CAN CAN0(10);
+
+
 void setup() {
 	// supersonic sensor pin setup
 	pinMode(ECHOPIN, INPUT); // set ultrasonic sensor echo pin to input
@@ -93,9 +101,10 @@ void setup() {
 
 	if(autoCycle == 1)
 		brightness = brightnessMax;
+  
+  CAN0.begin(CAN_500KBPS);                       // init can bus : baudrate = 500k 
+  pinMode(5, INPUT); 
   Serial.begin(9600);
-  Wire.begin(60);
-  Wire.onReceive(recvData);
   Serial.print("Setup complete");
 }
 
@@ -122,24 +131,67 @@ void log3( uint8_t a,uint8_t b,uint8_t c){
  * 
  * 
 */
-void recvData (int count){
-  Serial.print("Got Values: ");
-  for ( uint8_t i = 0; i < count ; i++ ){
-    ledValue.r = Wire.read();
-    ledValue.b = Wire.read();
-    ledValue.g = Wire.read();
-    log3( ledValue.r,ledValue.g,ledValue.b);
-    Serial.print(", ");
-    LED.set_crgb_at(i/3, ledValue); // Set values at LED found at index i
+
+unsigned char len = 0;
+unsigned char buf[8];
+unsigned char barrierbuffer[48];
+
+
+void recvData (){
+  // Serial.print("Got Values: ");
+  
+  CAN0.readMsgBuf(&len, buf);
+  uint8_t control_bits = buf[0] & 3;
+  
+  if ( buf[0] >> 2  == ADDRESS && len == 8 && control_bits != 3){
+    
+    switch (control_bits) {
+      
+      case 0: //sync two
+        LED.set_crgb_at(buf[1] >> 4 , { buf[2],buf[3],buf[4] } );
+        LED.set_crgb_at( ( buf[1] & 15 ) >> 4 , { buf[5],buf[6],buf[7] } );
+        break;
+    
+      case 1: //wait for sync signal
+        barrierbuffer[ ( buf[1] >> 4 ) * 3 ] = buf[2];
+        barrierbuffer[ ( buf[1] >> 4 ) * 3 + 1 ] = buf[3];
+        barrierbuffer[ ( buf[1] >> 4 ) * 3 + 2 ] = buf[4];
+        barrierbuffer[ ( buf[1] & 15 ) * 3 ] = buf[5];
+        barrierbuffer[ ( buf[1] & 15 ) * 3 + 1 ] = buf[6];
+        barrierbuffer[ ( buf[1] & 15 ) * 3 + 2 ] = buf[7];
+        break;
+      
+      case 2: //sync
+        barrierbuffer[ ( buf[1] >> 4 ) * 3 ] = buf[2];
+        barrierbuffer[ ( buf[1] >> 4 ) * 3 + 1 ] = buf[3];
+        barrierbuffer[ ( buf[1] >> 4 ) * 3 + 2 ] = buf[4];
+        barrierbuffer[ ( buf[1] & 15 ) * 3 ] = buf[5];
+        barrierbuffer[ ( buf[1] & 15 ) * 3 + 1 ] = buf[6];
+        barrierbuffer[ ( buf[1] & 15 ) * 3 + 2 ] = buf[7];
+        for ( uint8_t i = 0; i < 16; i++ ){
+          LED.set_crgb_at( i, { barrierbuffer[i*3], barrierbuffer[i*3+1], barrierbuffer[i*3+2] } );
+        }
+        memset(barrierbuffer, 0, 48);
+        break;
+    }
+    LED.sync();
   }
-  LED.sync();
-  if ( count == 54 ) {
-   uint8_t x = Wire.read();
-   if ( x >> 7 == 1 ) {
-    MODE = 0;
-   } else {
-    MODE = 1;
-   }
+  if ( control_bits == 3 ) {
+    if (buf[0] & 4 == 4 ) {
+       MODE = 1;
+    } else if ( buf[0] & 8 == 8 ) {
+       MODE = 0;
+    } else
+    
+    if ( buf[1] >> 2  == ADDRESS){
+      analogWrite(LEDWHITEPIN, buf[4]);
+    } else if ( ( ( buf[1] & 252) << 4 ) + ( buf[2] >> 4 ) == ADDRESS ){
+      analogWrite(LEDWHITEPIN, buf[5]);
+    } else if ( ( ( buf[2] & 15) << 2 ) + ( ( buf[3] & 192 ) >> 6 ) == ADDRESS ){
+      analogWrite(LEDWHITEPIN, buf[6]);
+    } else if ( buf[3] & 127 == ADDRESS ){
+      analogWrite(LEDWHITEPIN, buf[7]);
+    }
   }
 }
 
@@ -219,9 +271,10 @@ int ledDistance () {
 void loop() {
 	if ( MODE == 1 ) {
 	  ledDistance();
-	} else {
-    delay (100);
 	}
+  if (!digitalRead(5) && MODE == 0){
+    recvData();
+  }
 }
 
 void refreshRawDistance(){
