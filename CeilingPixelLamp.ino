@@ -1,89 +1,22 @@
 #include <mcp_can.h>
 #include <mcp_can_dfs.h>
 #include <SPI.h>
-//#include <can.h>
 #include <Wire.h>
 #include <WS2812.h>
 
-
-#if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__)
-//Code in here will only be compiled if an Arduino Uno (or older) is used.
-#define LEDRGBPIN 4 // WS2812b, digital
-#define LEDWHITEPIN 5 // white led, PWM
-#define ECHOPIN 7 // Echo pin, digital
-#define TRIGPIN 8 // Trigger pin, digital
-#define I2CSDAPIN 18 // I2C SDA, Analog in
-#define I2CSCLPIN 19 // I2C SCL, Analog in
-#endif
-
-#if defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega16U4__)
-//Code in here will only be compiled if an Arduino Leonardo is used.
-#define LEDRGBPIN 4 // WS2812b, Analog In
-#define LEDWHITEPIN 5 // white led, PWM
-#define ECHOPIN 7 // Echo pin, digital
-#define TRIGPIN 8 // Trigger pin, Analog In
-#define I2CSDAPIN 2 // I2C SDA, Analog in
-#define I2CSCLPIN 3 // I2C SCL, PWM
-#endif
-
-#if defined(__AVR_ATtiny85__) || defined(__AVR_ATtiny45__)
-//Code in here will only be compiled if an Arduino Tiny45/85 is used.
-#define LEDRGBPIN 3 // WS2812b, , PWM (LED on Model A)
-#define LEDWHITEPIN 5 // white led, PWM, Analog (also used for USB- when USB is in use)
-#define ECHOPIN 1 // ultrasonic echo, Analog In (also used for USB+ when USB is in use)
-#define TRIGPIN 4 // ultrasonic trigger, Analog in
-#define I2CSDAPIN 0 // I2C SDA, PWM (LED on Model B)
-#define I2CSCLPIN 2 // I2C SCL, Analog in
-#endif
-
-// LED related variables
-const uint8_t LEDCount = 16; // Number of LEDs to drive (default: 9)
-WS2812 LED(LEDCount); // init the WS2812 LED libary with X LED's
-cRGB ledValue; // holds the RGB color values
-const uint8_t saturation = 255; 	// color saturation
-uint8_t brightness = 0; 			// start / current brightness
-const uint8_t brightnessMin = 0;	// lowest limit of led brightness
-const uint8_t brightnessMax = 32;	// highest limit of led brightness
-uint8_t rgbColor[3] = {0,0,0}; 		// inital RGB values buffer array
-const uint16_t hueRange = 768;		// hue color range (3x255 from RGB)
-uint16_t hue = 0;					// current Hue color
+#include "var.h"
 
 // auto cycle color / rainbow wheel
 const uint8_t autoCycle = 0; // color cycle auto switch
 uint8_t autoCycleDirection = 1; // current direction of auto color cycle
 
-// ultra sonic sensor
-const uint8_t minimumRange = 60; // Minimum range needed in cm
-const uint8_t maximumRange = 120; // Maximum range needed in cm
-uint32_t duration = 0; // ultra sonic sensor echo duration
-uint32_t distance = 0; // ultra sonic sensor distance
-//Metro sonicMetro = Metro(50); // refresh time in ms for sensor
-uint32_t sonicPrevMillis = 0; // previous ultrasonic sensor polling millis
-const uint32_t sonicInterval = 100; // ultrasonic sensor polling interval
-
-// program logic related variables
-uint8_t getNewColor = 0; // trigger flag for new color generation based on distance
-uint8_t FadingIn = 0; // trigger flag for automatic fade in
-uint8_t FadingOut = 0; // trigger flag for automatic fade out
-uint32_t fadePrevMillis = 0; // previous fade millis
-const uint32_t fadeInterval = 20; // fade in and out refresh interval (ms till next increase)
-uint32_t sonicLastPrevMillis = 0; // previous ultrasonic sensor inactive millis
-const uint32_t sonicLastInterval = 1000; // ultrasonic sensor inactive interval
-
-
 void refreshRawDistance(); // get raw distance from ultrasonic sensor
 void hsb2rgb(uint16_t index, uint8_t sat, uint8_t bright, uint8_t color[3]); // convert HSB to RGB color
 
-/*
-Autocious Management
-MODE 0: distance sensor
-MODE 1: 12 cycles a slave ...ahem get led colors from i2c master
-
-*/
+// Can Stuff
 uint8_t MODE = 0; //sets Mode to do nothing
 uint8_t ADDRESS = 1; 
-//
-//
+
 
 MCP_CAN CAN0(10);
 
@@ -93,17 +26,13 @@ void setup() {
 	pinMode(ECHOPIN, INPUT); // set ultrasonic sensor echo pin to input
 	pinMode(TRIGPIN, OUTPUT); // set ultrasonic sensor trigger pin to output
 
-	// LED pin and color order setup
-	//LED.setOutput(LEDRGBPIN); // set WS2812B pin for library
-	//LED.setColorOrderRGB();  // RGB color order
-	//LED.setColorOrderBRG();  // BRG color order
-	//LED.setColorOrderGRB();  // GRB color order (Default; will be used if none other is defined.)
-
+	LED.setColorOrderRGB();  // RGB color order
+	
 	if(autoCycle == 1)
 		brightness = brightnessMax;
 	
 	CAN0.begin(CAN_500KBPS);                       // init can bus : baudrate = 500k 
-	pinMode(5, INPUT); 
+	pinMode(CAN_RX_PIN, INPUT); 
 	Serial.begin(9600);
 	Serial.print("Setup complete");
 }
@@ -133,7 +62,9 @@ void log3( uint8_t a,uint8_t b,uint8_t c){
 */
 
 unsigned char len = 0;
-unsigned char buf[8];
+unsigned char buf[8];     uint8_t first_half = buf[1] >> 4;
+        uint8_t second_half = buf[1] & 15;
+  
 unsigned char barrierbuffer[48];
 
 
@@ -142,32 +73,49 @@ void recvData (){
 	
 	CAN0.readMsgBuf(&len, buf);
 	uint8_t control_bits = buf[0] & 3;
-	
+	uint8_t first_half = buf[1] >> 4;
+  uint8_t second_half = buf[1] & 15;
+	uint32_t id = CAN0.getCanId(); //minig the id for another 29 bits of information
+  
 	if ( buf[0] >> 2  == ADDRESS && len == 8 && control_bits != 3){
 		
 		switch (control_bits) {
 			
 			case 0: //sync two
+        uint8_t id_cache[3];
+        id_cache[0] = id & 255;
+        id_cache[1] = ( id >> 8 ) & 255;
+        id_cache[1] = ( id >> 16 ) & 255;
 				LED.set_crgb_at(buf[1] >> 4 , { buf[2],buf[3],buf[4] } );
 				LED.set_crgb_at( ( buf[1] & 15 ) >> 4 , { buf[5],buf[6],buf[7] } );
+        LED.set_crgb_at( (id >> 24) & 15 , { id_cache[0] , id_cache[1] , id_cache[2] } );
 				break;
 		
 			case 1: //wait for sync signal
-				barrierbuffer[ ( buf[1] >> 4 ) * 3 ] = buf[2];
-				barrierbuffer[ ( buf[1] >> 4 ) * 3 + 1 ] = buf[3];
-				barrierbuffer[ ( buf[1] >> 4 ) * 3 + 2 ] = buf[4];
-				barrierbuffer[ ( buf[1] & 15 ) * 3 ] = buf[5];
-				barrierbuffer[ ( buf[1] & 15 ) * 3 + 1 ] = buf[6];
-				barrierbuffer[ ( buf[1] & 15 ) * 3 + 2 ] = buf[7];
+        
+				barrierbuffer[ first_half * 3 ] = buf[2];
+				barrierbuffer[ first_half * 3 + 1 ] = buf[3];
+				barrierbuffer[ first_half * 3 + 2 ] = buf[4];
+				barrierbuffer[ second_half * 3 ] = buf[5];
+				barrierbuffer[ second_half * 3 + 1 ] = buf[6];
+				barrierbuffer[ second_half * 3 + 2 ] = buf[7];
+        barrierbuffer[ ( id >> 24) & 15 * 3 ] = ( id >> 8 ) & 255;
+        barrierbuffer[ ( id >> 24) & 15 * 3 + 1 ] = ( id >> 16 ) & 255;
+        barrierbuffer[ ( id >> 24) & 15 * 3 + 2] = ( id >> 24 ) & 255;
 				break;
 			
 			case 2: //sync
-				barrierbuffer[ ( buf[1] >> 4 ) * 3 ] = buf[2];
-				barrierbuffer[ ( buf[1] >> 4 ) * 3 + 1 ] = buf[3];
-				barrierbuffer[ ( buf[1] >> 4 ) * 3 + 2 ] = buf[4];
-				barrierbuffer[ ( buf[1] & 15 ) * 3 ] = buf[5];
-				barrierbuffer[ ( buf[1] & 15 ) * 3 + 1 ] = buf[6];
-				barrierbuffer[ ( buf[1] & 15 ) * 3 + 2 ] = buf[7];
+	      uint8_t id_aux = (id >> 24) & 15;
+        barrierbuffer[ first_half * 3 ] = buf[2];
+        barrierbuffer[ first_half * 3 + 1 ] = buf[3];
+        barrierbuffer[ first_half * 3 + 2 ] = buf[4];
+        barrierbuffer[ second_half * 3 ] = buf[5];
+        barrierbuffer[ second_half * 3 + 1 ] = buf[6];
+        barrierbuffer[ second_half * 3 + 2 ] = buf[7];
+        barrierbuffer[ id_aux * 3 ] = ( id >> 8 ) & 255;
+        barrierbuffer[ id_aux * 3 + 1 ] = ( id >> 16 ) & 255;
+        barrierbuffer[ id_aux * 3 + 2] = ( id >> 24 ) & 255;
+        
 				for ( uint8_t i = 0; i < 16; i++ ){
 					LED.set_crgb_at( i, { barrierbuffer[i*3], barrierbuffer[i*3+1], barrierbuffer[i*3+2] } );
 				}
@@ -185,13 +133,17 @@ void recvData (){
 		
 		if ( buf[1] >> 2  == ADDRESS){
 			analogWrite(LEDWHITEPIN, buf[4]);
-		} else if ( ( ( buf[1] & 252) << 4 ) + ( buf[2] >> 4 ) == ADDRESS ){
+		} else if ( ( ( buf[1] & 3) << 4 ) + ( buf[2] >> 4 ) == ADDRESS ){
 			analogWrite(LEDWHITEPIN, buf[5]);
 		} else if ( ( ( buf[2] & 15) << 2 ) + ( ( buf[3] & 192 ) >> 6 ) == ADDRESS ){
 			analogWrite(LEDWHITEPIN, buf[6]);
 		} else if ( buf[3] & 127 == ADDRESS ){
 			analogWrite(LEDWHITEPIN, buf[7]);
-		}
+		} else if ( id & 63 == ADDRESS ){
+      analogWrite(LEDWHITEPIN, ( id >> 12 ) & 255 );
+	  } else if ( ( id >> 6 ) & 63 == ADDRESS ){
+      analogWrite(LEDWHITEPIN, ( id >> 20 ) & 255 );
+	  }
 	}
 }
 
