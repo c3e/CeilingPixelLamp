@@ -1,9 +1,19 @@
 #if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__)
 //Code in here will only be compiled if an Arduino Uno (or older) is used.
-#define LEDRGBPIN 4 // WS2812b, digital
-#define LEDWHITEPIN 5 // white led, PWM
 #define ECHOPIN 7 // Echo pin, digital
-#define TRIGPIN 8 // Trigger pin, digital
+
+#define LEDRGBPIN 4 // WS2812b, digital
+#define LEDWHITEPIN1 5 // white led, PWM
+#define LEDWHITEPIN2 6
+#define LEDWHITEPIN3 9
+#define LEDWHITEPIN4 10
+
+//CAN Variables
+#define CANCSPIN 8 // MCP2515 CS (Chip select)
+#define CANTXPIN 11 // MCP2515 SI (CAN TX)
+#define CANRXPIN 12 // MCP2515 SO (CAN RX)
+#define CANSCKPIN 13 // MCP2515 SCK (Clock)
+
 #define I2CSDAPIN 18 // I2C SDA, Analog in
 #define I2CSCLPIN 19 // I2C SCL, Analog in
 #endif
@@ -23,7 +33,6 @@
 #define LEDRGBPIN 3 // WS2812b, , PWM (LED on Model A)
 #define LEDWHITEPIN 5 // white led, PWM, Analog (also used for USB- when USB is in use)
 #define ECHOPIN 1 // ultrasonic echo, Analog In (also used for USB+ when USB is in use)
-#define TRIGPIN 4 // ultrasonic trigger, Analog in
 #define I2CSDAPIN 0 // I2C SDA, PWM (LED on Model B)
 #define I2CSCLPIN 2 // I2C SCL, Analog in
 #endif
@@ -57,6 +66,3 @@ uint32_t fadePrevMillis = 0; // previous fade millis
 const uint32_t fadeInterval = 20; // fade in and out refresh interval (ms till next increase)
 uint32_t sonicLastPrevMillis = 0; // previous ultrasonic sensor inactive millis
 const uint32_t sonicLastInterval = 1000; // ultrasonic sensor inactive interval
-
-//CAN Variables
-#define CAN_RX_PIN 5
