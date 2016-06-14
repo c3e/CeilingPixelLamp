@@ -13,6 +13,7 @@ uint8_t autoCycleDirection = 1; // current direction of auto color cycle
 
 void refreshRawDistance(); // get raw distance from ultrasonic sensor
 void hsb2rgb(uint16_t index, uint8_t sat, uint8_t bright, uint8_t color[3]); // convert HSB to RGB color
+void setAllWhiteLedsBrigthness(uint8_t _newBrightness);
 
 // Can Stuff
 uint8_t MODE = 0; //sets Mode to do nothing
@@ -40,7 +41,7 @@ void setup() {
         delay(100);
     }
     Serial.println("CAN BUS Shield init ok!");
-    //attachInterrupt(0, MCP2515_ISR, FALLING); // start interrupt
+    attachInterrupt(0, MCP2515_ISR, FALLING); // start interrupt
 
 	Serial.print("Setup complete");
 }
@@ -70,15 +71,23 @@ void log3( uint8_t a,uint8_t b,uint8_t c){
 */
 
 unsigned char len = 0;
-unsigned char buf[8];     uint8_t first_half = buf[1] >> 4;
+unsigned char buf[8];
+uint8_t first_half = buf[1] >> 4;
 uint8_t second_half = buf[1] & 15;
   
 unsigned char barrierbuffer[48];
 
+/**
+ * CAN Bus testing stuff
+ */
+unsigned char flagRecv = 0;
+void MCP2515_ISR()
+{
+    flagRecv = 1;
+}
 
 void recvData (){
 	// Serial.print("Got Values: ");
-	
 	CAN0.readMsgBuf(&len, buf);
 	uint8_t control_bits = buf[0] & 3;
 	uint8_t first_half = buf[1] >> 4;
@@ -100,7 +109,6 @@ void recvData (){
 				break;
 		
 			case 1: //wait for sync signal
-        
 				barrierbuffer[ first_half * 3 ] = buf[2];
 				barrierbuffer[ first_half * 3 + 1 ] = buf[3];
 				barrierbuffer[ first_half * 3 + 2 ] = buf[4];
@@ -132,6 +140,7 @@ void recvData (){
 		}
 		LED.sync();
 	}
+
 	if ( control_bits == 3 ) {
 		if (buf[0] & 4 == 4 ) {
 			 MODE = 1;
@@ -237,9 +246,18 @@ void loop() {
 	if ( MODE == 1 ) {
 		ledDistance();
 	}
+	
+	if(flagRecv) // check for interrupt flag 
+    {
+        flagRecv = 0; // clear flag
+        recvData();
+    }
+	
+	/*
 	if (!digitalRead(5) && MODE == 0){
 		recvData();
 	}
+	*/
 }
 
 void refreshRawDistance(){
