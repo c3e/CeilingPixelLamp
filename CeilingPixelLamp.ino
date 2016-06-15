@@ -8,8 +8,8 @@
 #include "var.h"
 
 // auto cycle color / rainbow wheel
-const uint8_t autoCycle = 0; // color cycle auto switch
-uint8_t autoCycleDirection = 1; // current direction of auto color cycle
+//const uint8_t autoCycle = 0; // color cycle auto switch
+//uint8_t autoCycleDirection = 1; // current direction of auto color cycle
 
 void refreshRawDistance(); // get raw distance from ultrasonic sensor
 void hsb2rgb(uint16_t index, uint8_t sat, uint8_t bright, uint8_t color[3]); // convert HSB to RGB color
