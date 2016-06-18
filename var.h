@@ -88,8 +88,8 @@ const uint16_t hueRange = 765;		// hue color range (3x255 from RGB)
 uint16_t hue = 0;					// current Hue color
 
 // auto cycle color / rainbow wheel
-const uint8_t autoCycle = 0; // color cycle auto switch
-uint8_t autoCycleDirection = 1; // current direction of auto color cycle
+//const uint8_t autoCycle = 1; // color cycle auto switch
+//uint8_t autoCycleDirection = 1; // current direction of auto color cycle
 
 // white led stuff
 const uint8_t autoWhite = 1;
