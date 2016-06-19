@@ -37,10 +37,10 @@ void setup() {
 	
 	Serial.begin(9600);
 
-	CAN0.begin(CAN_500KBPS);	// init can bus : baudrate = 500k 
+	CAN0.begin(CAN_500KBPS, MCP_8MHz);	// init can bus : baudrate = 500k 
 	pinMode(CANRXPIN, INPUT);
 
-	while (CAN_OK != CAN0.begin(CAN_500KBPS))              // init can bus : baudrate = 500k
+	while (CAN_OK != CAN0.begin(CAN_500KBPS, MCP_8MHz))              // init can bus : baudrate = 500k
     {
         Serial.println("CAN BUS Shield init fail");
         Serial.println("Init CAN BUS Shield again");
