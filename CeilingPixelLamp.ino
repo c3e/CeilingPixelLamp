@@ -13,7 +13,7 @@
 
 void refreshRawDistance(); // get raw distance from ultrasonic sensor
 void hsb2rgb(uint16_t index, uint8_t sat, uint8_t bright, uint8_t color[3]); // convert HSB to RGB color
-void setAllWhiteLedsBrigthness(uint8_t _newBrightness);
+void setAllWhiteLedsBrightness(uint8_t _newBrightness);
 
 // Can Stuff
 uint8_t MODE = 1; //sets Mode to led
@@ -78,8 +78,8 @@ void log3( uint8_t a,uint8_t b,uint8_t c){
 
 unsigned char len = 0;
 unsigned char buf[8];
-uint8_t first_half = buf[1] >> 4;
-uint8_t second_half = buf[1] & 15;
+uint8_t p_addr[0] = buf[1] >> 4;
+uint8_t p_addr[1] = buf[1] & 15;
   
 unsigned char barrierbuffer[48];
 
@@ -90,80 +90,141 @@ unsigned char barrierbuffer[48];
 void recvData (){
 	// Serial.print("Got Values: ");
 	CAN0.readMsgBuf(&len, buf);
-	uint8_t control_bits = buf[0] & 3;
-	uint8_t first_half = buf[1] >> 4;
-  	uint8_t second_half = buf[1] & 15;
-	uint32_t id = CAN0.getCanId(); //minig the id for another 29 bits of information
-  
-	if ( buf[0] >> 2  == ADDRESS && control_bits != 3){
+	uint32_t id = CAN0.getCanId();
+	uint8_t control_bits = id & 7;
+	uint8_t p_addr[4];
+	uint8_t rgb[12];
+	if ( control_bits > 3){
+		for ( size_t i = 0;  i< 4 ; i++){
+				rgb[i*3]   = buf[0] >> 3 ;
+				rgb[i*3+1] = ( buf[0] & 7 ) << 3 + buf[1] >> 5;
+				rgb[i*3+2] = buf[1] & 31  ;
+		}
+		p_addr[3] = (id >> 13) && 15;
+	}
+	p_addr[0] = (id >> 25) && 15;
+	p_addr[1] = (id >> 21) && 15;
+	p_addr[2] = (id >> 17) && 15;
+	
+	if ( id >> 3 & 127 == ADDRESS && control_bits != 3){
 		
 		switch (control_bits) {
 			
-			case 0: //sync two
-		        uint8_t id_cache[3];
-		        id_cache[0] = id & 255;
-		        id_cache[1] = ( id >> 8 ) & 255;
-		        id_cache[1] = ( id >> 16 ) & 255;
-				LED.set_crgb_at(buf[1] >> 4 , { buf[2],buf[3],buf[4] } );
-				LED.set_crgb_at( ( buf[1] & 15 ) >> 4 , { buf[5],buf[6],buf[7] } );
-		        LED.set_crgb_at( (id >> 24) & 15 , { id_cache[0] , id_cache[1] , id_cache[2] } );
+			case 0: //sync 
+		        
+				LED.set_crgb_at( p_addr[0] , { ( id >> 9 ) & 0xFF,buf[0],buf[1] } );
+				if (len > 2)
+					LED.set_crgb_at( p_addr[1] , { buf[2],buf[3],buf[4] } );
+				if ( len > 5)
+		        	LED.set_crgb_at( p_addr[2] , { buf[5],buf[6],buf[7] } );
+		        LED.sync();
 				break;
 		
-			case 1: //wait for sync signal
-				barrierbuffer[ first_half * 3 ] = buf[2];
-				barrierbuffer[ first_half * 3 + 1 ] = buf[3];
-				barrierbuffer[ first_half * 3 + 2 ] = buf[4];
-				barrierbuffer[ second_half * 3 ] = buf[5];
-				barrierbuffer[ second_half * 3 + 1 ] = buf[6];
-				barrierbuffer[ second_half * 3 + 2 ] = buf[7];
-		        barrierbuffer[ ( id >> 24) & 15 * 3 ] = ( id >> 8 ) & 255;
-		        barrierbuffer[ ( id >> 24) & 15 * 3 + 1 ] = ( id >> 16 ) & 255;
-		        barrierbuffer[ ( id >> 24) & 15 * 3 + 2] = ( id >> 24 ) & 255;
+			case 1: //buffer until barrier
+				barrierbuffer[ p_addr[0] * 3 ] 	   = ( id >> 9 ) & 0xFF;
+				barrierbuffer[ p_addr[0] * 3 + 1 ] = buf[0];
+				barrierbuffer[ p_addr[0] * 3 + 2 ] = buf[1];
+				if ( len > 2){
+					barrierbuffer[ p_addr[1] * 3 ] 	   = buf[2];
+					barrierbuffer[ p_addr[1] * 3 + 1 ] = buf[3];
+					barrierbuffer[ p_addr[1] * 3 + 2 ] = buf[4];
+				}	
+				if ( len > 5){
+		        	barrierbuffer[ p_addr[2] * 3 ] 	   = buf[5];
+		       		barrierbuffer[ p_addr[2] * 3 + 1 ] = buf[6];
+		        	barrierbuffer[ p_addr[2] * 3 + 2 ] = buf[7];
+				}
 				break;
 			
-			case 2: //sync
-	      		uint8_t id_aux = (id >> 24) & 15;
-		        barrierbuffer[ first_half * 3 ] = buf[2];
-		        barrierbuffer[ first_half * 3 + 1 ] = buf[3];
-		        barrierbuffer[ first_half * 3 + 2 ] = buf[4];
-		        barrierbuffer[ second_half * 3 ] = buf[5];
-		        barrierbuffer[ second_half * 3 + 1 ] = buf[6];
-		        barrierbuffer[ second_half * 3 + 2 ] = buf[7];
-		        barrierbuffer[ id_aux * 3 ] = ( id >> 8 ) & 255;
-		        barrierbuffer[ id_aux * 3 + 1 ] = ( id >> 16 ) & 255;
-		        barrierbuffer[ id_aux * 3 + 2] = ( id >> 24 ) & 255;
-        
+			case 2: //barrier signal + payload
+		        barrierbuffer[ p_addr[0] * 3 ] 	   = (id >> 9) & 0xFF;
+				barrierbuffer[ p_addr[0] * 3 + 1 ] = buf[0];
+				barrierbuffer[ p_addr[0] * 3 + 2 ] = buf[1];
+				if ( len > 2){
+					barrierbuffer[ p_addr[1] * 3 ] 	   = buf[2];
+					barrierbuffer[ p_addr[1] * 3 + 1 ] = buf[3];
+					barrierbuffer[ p_addr[1] * 3 + 2 ] = buf[4];
+				}	
+				if ( len > 5) {
+		        	barrierbuffer[ p_addr[2] * 3 ] 	   = buf[5];
+		        	barrierbuffer[ p_addr[2] * 3 + 1 ] = buf[6];
+		        	barrierbuffer[ p_addr[2] * 3 + 2 ] = buf[7];
+        		}
+
 				for ( uint8_t i = 0; i < 16; i++ ){
 					LED.set_crgb_at( i, { barrierbuffer[i*3], barrierbuffer[i*3+1], barrierbuffer[i*3+2] } );
 				}
 				memset(barrierbuffer, 0, 48);
+				LED.sync();
 				break;
+
+			case 4: //sync new layout
+				for ( size_t i = 0; i<4; i++)
+					LED.set_crgb_at( p_addr[i] , { rgb[i*3],rgb[i*3+1],rgb[i+3+2] } );
+				LED.sync();
+				break;
+
+			case 5:
+				for ( size_t i = 0; i<4; i++){
+					barrierbuffer[p_addr[i]] = rgb[i*3];
+					barrierbuffer[p_addr[i]+1] = rgb[i*3+1];
+					barrierbuffer[p_addr[i]+2] = rgb[i*3+2];
+				}
+				break;
+
+			case 6:
+				case 5:
+				for ( size_t i = 0; i<4; i++){
+					barrierbuffer[p_addr[i]] = rgb[i*3];
+					barrierbuffer[p_addr[i]+1] = rgb[i*3+1];
+					barrierbuffer[p_addr[i]+2] = rgb[i*3+2];
+				}
+
+				for ( uint8_t i = 0; i < 16; i++ ){
+					LED.set_crgb_at( i, { barrierbuffer[i*3], barrierbuffer[i*3+1], barrierbuffer[i*3+2] } );
+				}
+				memset(barrierbuffer, 0, 48);
+				LED.sync();
+				break;
+
+			case 7: //sync one/two
+				LED.set_crgb_at( p_addr[0] , { id && 0xFF,buf[0],buf[1] } );
+
+				break;
+
 		}
-		LED.sync();
 	}
 
-	if ( control_bits == 3 ) {
-		if (buf[0] & 4 == 4 ) {
+	//
+	//	Whiting Out
+	//	6 panels with one packet, so there are 6 addresses 
+	//	and a 8bit value for each address
+	//  
+	//	Also there is a bit next to id, to set panels to autacious mode 
+	//
+
+	if ( control_bits == 3 ) { 
+		if (id & 8 == 8 ) {
 			 MODE = 1;
-		} else if ( buf[0] & 8 == 8 ) {
+		} else if ( id & 8 == 0 ) {
 			 MODE = 0;
 		} else if ( buf[1] >> 2  == ADDRESS){
-			setAllWhiteLedsBrigthness(buf[4]);
+			setAllWhiteLedsBrightness(buf[4]);
 		} else if ( ( ( buf[1] & 3) << 4 ) + ( buf[2] >> 4 ) == ADDRESS ){
-			setAllWhiteLedsBrigthness(buf[5]);
+			setAllWhiteLedsBrightness(buf[5]);
 		} else if ( ( ( buf[2] & 15) << 2 ) + ( ( buf[3] & 192 ) >> 6 ) == ADDRESS ){
-			setAllWhiteLedsBrigthness(buf[6]);
+			setAllWhiteLedsBrightness(buf[6]);
 		} else if ( buf[3] & 127 == ADDRESS ){
-			setAllWhiteLedsBrigthness(buf[7]);
-		} else if ( id & 63 == ADDRESS ){
-      		setAllWhiteLedsBrigthness(( id >> 12 ) & 255 );
-	  	} else if ( ( id >> 6 ) & 63 == ADDRESS ){
-      		setAllWhiteLedsBrigthness(( id >> 20 ) & 255 );
-	  	}
+			setAllWhiteLedsBrightness(buf[7]);
+		} else if ( (id >> 9) & 127 == ADDRESS) {
+			setAllWhiteLedsBrightness(buf[0]);
+		} else if ( (id >> 15) & 127 == ADDRESS ) {
+			setAllWhiteLedsBrightness(id >> 21);
+		}
 	}
 }
 
-void setAllWhiteLedsBrigthness(uint8_t _newBrightness=0) {
+void setAllWhiteLedsBrightness(uint8_t _newBrightness=0) {
 	analogWrite(LEDWHITEPIN1, _newBrightness);
 	analogWrite(LEDWHITEPIN2, _newBrightness);
 	analogWrite(LEDWHITEPIN3, _newBrightness);
@@ -195,7 +256,7 @@ int ledDistance () {
 			}
 		}
 		if(WhiteFadingIn == 1 || WhiteFadingOut == 1) {
-			setAllWhiteLedsBrigthness(Whitebrightness);
+			setAllWhiteLedsBrightness(Whitebrightness);
 		}
 		/*
 		else {
