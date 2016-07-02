@@ -73,16 +73,22 @@ const uint32_t sonicLastInterval = 1000; // ultrasonic sensor inactive interval
 
 
 
-
+int fade = 0; // state 
+int cbrightness = 0; // color brightness
+int distancecounter = 0; // tells when distance is checked
+int olddistance = 0; // saved distance for comparison
+int oldstate = 0; // for checks 
+int ndistance = 0;
+uint8_t disti = 0;
+#define debug 1
 
 // LED related variables
 const uint8_t LEDCount = 16; // Number of LEDs to drive (default: 9)
 WS2812 LED(LEDCount); // init the WS2812 LED libary with X LED's
 cRGB ledValue; // holds the RGB color values
 const uint8_t saturation = 255; 	// color saturation
-uint8_t brightness = 0; 			// start / current brightness
-const uint8_t brightnessMin = 0;	// lowest limit of led brightness
-const uint8_t brightnessMax = 255;	// highest limit of led brightness
+int brightness = 0; 			// start / current brightness
+	// highest limit of led brightness
 uint8_t rgbColor[3] = {0,0,0}; 		// inital RGB values buffer array
 const uint16_t hueRange = 765;		// hue color range (3x255 from RGB)
 uint16_t hue = 0;					// current Hue color
@@ -91,16 +97,6 @@ uint16_t hue = 0;					// current Hue color
 //const uint8_t autoCycle = 1; // color cycle auto switch
 //uint8_t autoCycleDirection = 1; // current direction of auto color cycle
 
-// white led stuff
-const uint8_t autoWhite = 1;
-uint8_t WhiteFadingIn = 0;
-uint8_t WhiteFadingOut = 1;
-uint32_t WhitefadePrevMillis = 0; // previous fade millis
-const uint32_t WhiteFadeInterval = 5; // fade in and out refresh interval (ms till next increase)
-uint8_t Whitebrightness = 0;
-uint8_t WhiteBrightnessMin = 0;
-uint8_t WhiteBrightnessMax = 255;
-
 // ultra sonic sensor
 const uint8_t minimumRange = 60; // Minimum range needed in cm
 const uint8_t maximumRange = 120; // Maximum range needed in cm
@@ -108,16 +104,3 @@ const uint8_t maximumRange = 120; // Maximum range needed in cm
 //const uint8_t maximumRange = 80; // Maximum range needed in cm
 
 uint32_t distance = 0; // ultra sonic sensor distance
-//Metro sonicMetro = Metro(50); // refresh time in ms for sensor
-uint32_t sonicPrevMillis = 0; // previous ultrasonic sensor polling millis
-const uint32_t sonicInterval = 40; // ultrasonic sensor polling interval
-uint32_t sonicLastPrevMillis = 0; // previous ultrasonic sensor inactive millis
-const uint32_t sonicLastInterval = 500; // ultrasonic sensor inactive interval
-//NewPing sonar(ECHOPIN, ECHOPIN, maximumRange); // NewPing setup of pin and maximum distance.
-
-// program logic related variables
-uint8_t getNewColor = 0; // trigger flag for new color generation based on distance
-uint8_t FadingIn = 0; // trigger flag for automatic fade in
-uint8_t FadingOut = 0; // trigger flag for automatic fade out
-uint32_t fadePrevMillis = 0; // previous fade millis
-const uint32_t fadeInterval = 5; // fade in and out refresh interval (ms till next increase)
