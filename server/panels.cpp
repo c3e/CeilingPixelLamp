@@ -7,22 +7,16 @@
 #include <cstdint>
 #include <vector>
 #include <evhttp.h>
-#include "gason.h"
+#include "libs/gason.h"
 
 //Can
-#include <linux/can.h>
-#include <linux/can/raw.h>
-
-#include <net/if.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
+#include "libs/can.h"
 
 //MQTT
 #include <stdio.h>
 #include <mosquitto.h>
 
-uint16_t to565( uint32_t );
+//uint16_t to565( uint32_t );
 inline void send_panel ( uint8_t , uint32_t *);
 void mqtt_propagate ( uint8_t, uint8_t *, uint32_t *, uint8_t );
 inline void mqtt_send(char *, uint16_t );
@@ -32,7 +26,7 @@ class tile {
 		tile( uint8_t,uint8_t,uint8_t);
 		tile ( uint8_t);
 		tile ( );
-		uint8_t panel[16][3] = {0};
+		uint8_t panel[16][3];
 		bool white;
 		uint8_t orientation;
 		void set_pixel(uint8_t, uint8_t,uint8_t, uint8_t,uint8_t);
@@ -109,164 +103,15 @@ tile ceiling[64];
 int can_socket;
 //tile ceiling[64];
 
-int can_init() {
-
-	int s;
-	struct sockaddr_can addr;
-	struct ifreq ifr;
-
-	std::string ifname("can0");
-
-	if((s = socket(PF_CAN, SOCK_RAW, CAN_RAW)) < 0) {
-		perror("Error while opening Can Socket");
-		return -1;
-	}
-
-	strcpy(ifr.ifr_name, ifname.c_str());
-	ioctl(s, SIOCGIFINDEX, &ifr);
-	
-	addr.can_family  = AF_CAN;
-	addr.can_ifindex = ifr.ifr_ifindex; 
-
-	printf("%s at index %d\n", ifname.c_str(), ifr.ifr_ifindex);
-
-	if(bind(s, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		perror("Error while binding Can Socket");
-		return -2;
-	}
-
-	return s;
+char * update_white( uint8_t id, uint8_t pwm){
+	can_send_white( id, pwm, 1, -1);
+	printf("White id: %i, pwm: %i", id, pwm);
+	return NULL;
 }
 
-uint8_t can_send_pixel4( uint8_t update_mode, uint8_t panel_address, uint32_t *rgb, uint8_t* pixel_address){
-	uint8_t nbytes;
-	struct can_frame frame;
-
-	frame.can_id  = panel_address << 3 + update_mode + (pixel_address[0] << 25) + (pixel_address[1] << 21) + (pixel_address[2] << 17) + pixel_address[3] << 13;
-	frame.can_dlc = 2;
-	for ( uint8_t i = 0; i< 4; i++){
-		uint16_t p = to565(rgb[i]);
-		frame.data[i*2] = p >> 8;
-		frame.data[i*2+1] = p & 0xFF; 
-	}
-
-	//
-	// Mögliche Fehler Quelle: send statt write !!
-	// 
-	//
-
-	nbytes = send(can_socket, &frame, sizeof(struct can_frame),0);
-
-	printf("Wrote %d bytes on CAN Bus\n", nbytes);
-	
-	return 0;
-
-}
-
-uint16_t to565( uint32_t i){
-	return ((i & 0xF80000) >> 8 ) + ((i & 0xFC00) >> 5 ) + (i & 0xFF >> 3);  
-}
-
-
-// sends 1 pixel
-uint8_t can_send_pixel1( uint8_t update_mode, uint8_t panel_address, uint8_t r, uint8_t g, uint8_t b, uint8_t pixel_address){
-	
-	uint8_t nbytes;
-	struct can_frame frame;
-
-	frame.can_id  = panel_address << 3 + update_mode + (pixel_address << 25) + (pixel_address << 21) + (pixel_address << 17) + (r << 9 );
-	frame.can_dlc = 2;
-	frame.data[0] = b;
-	frame.data[1] = g;
-	//
-	// Mögliche Fehler Quelle: send statt write !!
-	// 
-	//
-
-	nbytes = send(can_socket, &frame, sizeof(struct can_frame),0);
-
-	printf("Wrote %d bytes on CAN Bus\n", nbytes);
-	
-	return 0;
-}
-// sends 2 pixel
-uint8_t can_send_pixel2( uint8_t update_mode, uint8_t panel_address, uint8_t *r, uint8_t* g, uint8_t* b,uint8_t* pixel_address ){
-	
-	uint8_t nbytes;
-	struct can_frame frame;
-
-	frame.can_id  = panel_address << 3 + update_mode + (pixel_address[0] << 25) + (pixel_address[1] << 21) + (pixel_address[1] << 17) + (r[0] << 9 );
-	frame.can_dlc = 5;
-	frame.data[0] = g[0];
-	frame.data[1] = b[0];
-	frame.data[2] = r[1];
-	frame.data[3] = g[1];
-	frame.data[4] = b[1];
-	//frame.data[5] = r[1];
-	//frame.data[6] = g[1];
-	//frame.data[7] = b[1];
-
-	//
-	// Mögliche Fehler Quelle: send statt write !!
-	// 
-	//
-
-	nbytes = send(can_socket, &frame, sizeof(struct can_frame),0);
-
-	printf("Wrote %d bytes on CAN Bus\n", nbytes);
-	
-	return 0;
-}
-// guess what ..
-uint8_t can_send_pixel3( uint8_t update_mode, uint8_t panel_address, uint8_t* pixel_address, uint8_t* r, uint8_t* g, uint8_t* b ){
-	
-	uint8_t nbytes;
-	struct can_frame frame;
-
-	frame.can_id  = r[0] + g[0]*0x100 + b[0]*0x10000 + ( pixel_address[0] )*0x1000000;
-	frame.can_dlc = 8;
-	frame.data[0] = panel_address * 4 + update_mode;
-	frame.data[1] = pixel_address[1] + pixel_address[2] * 0x10;
-	frame.data[2] = r[1];
-	frame.data[3] = g[1];
-	frame.data[4] = b[1];
-	frame.data[5] = r[2];
-	frame.data[6] = g[2];
-	frame.data[7] = b[2];
-	 
-	//
-	// Mögliche Fehler Quelle: send statt write !!
-	// 
-	//
-
-	nbytes = send(can_socket, &frame, sizeof(struct can_frame),0);
-
-	printf("Wrote %d bytes on CAN Bus\n", nbytes);
-	
-	return 0;
-}
-// sends n pixel
-uint8_t can_send_pixeln( uint8_t update_mode, uint8_t panel_address, uint32_t *rgb, uint8_t *pixel_address, size_t n){
-	uint8_t r[n];
-	uint8_t g[n];
-	uint8_t b[n];
-	for ( uint8_t i = 0; i<n; i++){
-		r[i] = rgb[i] & 0xFF0000 >> 16;
-		g[i] = rgb[i] & 0xFF00 >> 8;
-		b[i] = rgb[i] & 0xFF,rgb[1] & 0xFF;
-	}
-	switch (n){
-		case 1:
-			return can_send_pixel1( update_mode, panel_address, rgb[0] & 0xFF0000 >> 16, rgb[0] & 0xFF00 >> 8, rgb[0] & 0xFF, pixel_address[0]);
-
-		case 2:
-			can_send_pixel2( update_mode, panel_address, r, g, b, pixel_address);
-			break;
-		case 3:
-			can_send_pixel3( update_mode, 	panel_address, r, g, b, pixel_address);
-			break;
-	}
-	return 1;
+void update_orientation ( uint8_t id, uint8_t o){
+	ceiling[id].orientation = o;
+	can_send_white(id, 0, 1, o);
 }
 
 //
@@ -274,6 +119,8 @@ uint8_t can_send_pixeln( uint8_t update_mode, uint8_t panel_address, uint32_t *r
 // issued from a web request
 // update 1 pixel with panel id and x,y coord on panel
 //  
+
+
 char * update_pixel(uint8_t id, uint8_t x, uint8_t y, char *buffer ){
 	
 	// values for gason library 
@@ -308,6 +155,8 @@ char * update_pixel(uint8_t id, uint8_t x, uint8_t y, char *buffer ){
     	mqtt_propagate(id,&addr,&s,1 );
     	ceiling[id].set_pixel(x,y,store[0],store[1],store[2]);
     }
+
+    return NULL;
 }
 
 
@@ -418,7 +267,7 @@ char * api( char * p, evhttp_request * req){
 	uint8_t i=0;
 	uint8_t pos = 0;
 	std::string token;
-	while ((pos = s.find(delimiter)) != std::string::npos) {
+	while ((pos = s.find(delimiter)) != std::string::npos && i < 10) {
     	token = s.substr(0, pos);
     	args[i] = token;
    	 	s.erase(0, pos + delimiter.length());
@@ -446,6 +295,8 @@ char * api( char * p, evhttp_request * req){
 			ret = update_panel(atoi(args[4].c_str()), data);
 		} else if ( args[3].compare("pixel") == 0){
 			ret = update_pixel(atoi( args[4].c_str()),atoi( args[5].c_str()),atoi( args[6].c_str()), data);
+		} else if ( args[3].compare("white") == 0){
+			ret = update_white( atoi (args[4].c_str() ), atoi(args[5].c_str()));
 		}
 	} else if ( strncmp(args[2].c_str(), "get", 3 ) == 0){
 		if ( strncmp(args[3].c_str(),"panel",5) == 0 ){
@@ -464,6 +315,7 @@ char * api( char * p, evhttp_request * req){
 void on_connect(struct mosquitto *mosq, void *userdata, int result){
 	if(!result){
 		mosquitto_subscribe(mosq, NULL, "#", 2);
+		printf("connected to channel #");
 	}else{
 		fprintf(stderr, "Connect failed\n");
 	}

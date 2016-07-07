@@ -18,7 +18,8 @@ void setAllWhiteLedsBrightness(uint8_t _newBrightness);
 
 // Can Stuff
 uint8_t MODE = 1; //sets Mode to led
-uint8_t ADDRESS = 1; 
+uint8_t ADDRESS = 1; // Address of this Nano in BUS Network
+uint8_t orientation = 0; // orientation values 0,1,2,3
 
 NewPing sonar(ECHOPIN, ECHOPIN, maximumRange); // NewPing setup of pin and maximum distance.
 MCP_CAN CAN0(CANCSPIN);  // initializing CAN BUS
@@ -45,10 +46,10 @@ void setup() {
 	
 	Serial.begin(115200);
 
-	CAN0.begin(CAN_500KBPS, MCP_8MHz);	// init can bus : baudrate = 500k 
-	pinMode(CANRXPIN, INPUT);
+	//CAN0.begin(CAN_500KBPS, MCP_16MHz);	// init can bus : baudrate = 500k 
+	//pinMode(CANRXPIN, INPUT);
 
-	while (CAN_OK != CAN0.begin(CAN_500KBPS, MCP_8MHz))              // init can bus : baudrate = 500k
+	while (CAN_OK != CAN0.begin(CAN_500KBPS, MCP_16MHz))              // init can bus : baudrate = 500k
     {
         Serial.println("CAN BUS Shield init fail");
         Serial.println("Init CAN BUS Shield again");
@@ -92,11 +93,16 @@ unsigned char barrierbuffer[48];
  * CAN Bus testing stuff
  */
 
-void recvData (){
-	// Serial.print("Got Values: ");
+inline void recvData (){
 	CAN0.readMsgBuf(&len, buf);
 	uint32_t id = CAN0.getCanId();
 	uint8_t control_bits = id & 7;
+	if (debug){
+		Serial.print("(CAN) Id: ");
+	  	Serial.print(id);
+		Serial.print("  ControlBits: ");
+	  	Serial.println(control_bits);
+	}
 	uint8_t p_addr[4];
 	uint8_t rgb[12];
 	if ( control_bits > 3){
@@ -209,22 +215,44 @@ void recvData (){
 	//
 
 	if ( control_bits == 3 ) { 
-		if (id & 8 == 8 ) {
-			 MODE = 1;
-		} else if ( id & 8 == 0 ) {
-			 MODE = 0;
+    
+    	/*	
+    	Serial.println(id & 8 );
+		if ((id & 8 ) == 8 ) {
+			Serial.println("OFF");
+			MODE = 1;
+		} else if ( ( id & 8 ) == 0 ) {
+			MODE = 0;
+			Serial.println("ON");
 		} else if ( buf[1] >> 2  == ADDRESS){
 			setAllWhiteLedsBrightness(buf[4]);
 		} else if ( ( ( buf[1] & 3) << 4 ) + ( buf[2] >> 4 ) == ADDRESS ){
 			setAllWhiteLedsBrightness(buf[5]);
 		} else if ( ( ( buf[2] & 15) << 2 ) + ( ( buf[3] & 192 ) >> 6 ) == ADDRESS ){
 			setAllWhiteLedsBrightness(buf[6]);
-		} else if ( buf[3] & 127 == ADDRESS ){
+		} else if ( (buf[3] & 127) == ADDRESS ){
 			setAllWhiteLedsBrightness(buf[7]);
-		} else if ( (id >> 9) & 127 == ADDRESS) {
+		} else if ( ((id >> 9) & 127) == ADDRESS) {
 			setAllWhiteLedsBrightness(buf[0]);
-		} else if ( (id >> 15) & 127 == ADDRESS ) {
+		} else if ( ((id >> 15) & 127) == ADDRESS ) {
 			setAllWhiteLedsBrightness(id >> 21);
+		}
+		*/
+
+		if ( ( (id >> 3) & 0x3F ) == ADDRESS ){
+			if ( ((id & 0x200)) == 0x200 ){ // is there a '1' at bit index 10; switch on/off
+				Serial.println("ON");
+				MODE = 0; 
+			} else {
+				Serial.println("OFF");
+				MODE = 1;
+			}
+			if (  ( id & 0x1000 ) == 0x1000 ) // is there a '1' at bit index 12
+				orientation = ( (id & 0xc00 ) >> 10); // update the orientation of the panels with value 0 - 3 at bit index 10,11
+
+			// update the white
+			setAllWhiteLedsBrightness ((id & 0x1FE000) >> 13 );// pwm value at bit index 13 - 20
+      Serial.println(id & 0x1FE000);
 		}
 	}
 }
@@ -253,7 +281,7 @@ inline int ledDistance () {
 	//if ( millis() > update + 10) {
 	//	update = millis();
 
-		if ( distancecounter > 50){
+		if ( distancecounter > 20){
 			distancecounter = 0;
 			if ( debug ){
 				Serial.print("Distance: ");
@@ -281,8 +309,8 @@ inline int ledDistance () {
 		}
 
 		distancecounter++;
-
-		if (min4(d[0],d[1],d[2],d[3]) != 0 && ndistance > minimumRange && distance < maximumRange && fade < 2) {
+		// && ndistance > minimumRange && distance < maximumRange &&
+		if (min4(d[0],d[1],d[2],d[3]) != 0 && fade < 2) {
 			hue = map(ndistance, minimumRange, maximumRange, 0, hueRange);	
 			fade = 2;
 			while ( brightness > 0){
@@ -364,12 +392,12 @@ inline int ledDistance () {
 }
 
 void loop() {
-	delay(10);
 	if ( MODE == 1 ) {
 		ledDistance();
-	} else {
-		Serial.println("Asking");
+    delay(10);
 	}
+  if(CAN_MSGAVAIL == CAN0.checkReceive()) 
+    recvData();
 }
 
 void refreshRawDistance(){
