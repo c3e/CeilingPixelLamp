@@ -109,6 +109,19 @@ char * update_white( uint8_t id, uint8_t pwm){
 	return NULL;
 }
 
+char * update_on(uint8_t id){
+	can_send_white(id, 0, 1, -1);
+	printf("Panel %i is now ON!", id);
+	return NULL;
+}
+
+char * update_off(uint8_t id){
+	can_send_white(id, 0, 0, -1);
+	printf("Panel %i is now OFF!", id);
+	return NULL;
+}
+
+
 void update_orientation ( uint8_t id, uint8_t o){
 	ceiling[id].orientation = o;
 	can_send_white(id, 0, 1, o);
@@ -297,7 +310,13 @@ char * api( char * p, evhttp_request * req){
 			ret = update_pixel(atoi( args[4].c_str()),atoi( args[5].c_str()),atoi( args[6].c_str()), data);
 		} else if ( args[3].compare("white") == 0){
 			ret = update_white( atoi (args[4].c_str() ), atoi(args[5].c_str()));
+		} else if ( args[3].compare("on") == 0){
+			ret = update_on(atoi (args[4].c_str()));
+		} else if ( args[3].compare("off") == 0){
+			ret = update_off(atoi (args[4].c_str()));
 		}
+
+
 	} else if ( strncmp(args[2].c_str(), "get", 3 ) == 0){
 		if ( strncmp(args[3].c_str(),"panel",5) == 0 ){
 			ret = fetch_panel(atoi ( args[4].c_str() ) );
