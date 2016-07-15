@@ -79,9 +79,9 @@ uint8_t * tile::compare ( uint32_t * input ){
 	static uint8_t a [17];
 	uint8_t p = 0;
 	for ( uint8_t i = 1; i<16; i++){
-		if (   (input[i] & 0xFF) != panel[i][0] 
-			 || input[i] & 0xFF00 >> 8 != panel[i][1]
-			 || input[i] & 0xFF0000 >> 16 != panel[i][2])
+		if (   (input[i] & 0xFF) != panel[i][2] 
+			 || ((input[i] & 0xFF00) >> 8 ) != panel[i][1]
+			 || ((input[i] & 0xFF0000) >> 16 ) != panel[i][0])
 			a[p++] = i;
 	}
 	a[0] = p;
@@ -102,6 +102,44 @@ struct mosquitto * mosq = NULL;
 tile ceiling[64];
 int can_socket;
 //tile ceiling[64];
+
+uint8_t o1[16] = {3,2,1,0,4,5,6,7,11,10,9,8,12,13,14,15};
+uint8_t o2[16] = {0,7,8,15,1,6,9,14,2,5,10,13,3,4,11,12};
+uint8_t o3[16] = {15,14,13,12,8,9,10,11,7,6,5,4,0,1,2,3};
+uint8_t o4[16] = {12,11,4,3,13,10,5,2,14,9,6,1,15,8,7,0};
+
+inline void reorder( uint8_t orientation, uint32_t * store ){
+	uint32_t * tmp = (uint32_t*) malloc(sizeof(uint32_t)*16);
+	switch (orientation) {
+		case 0:
+			for (uint8_t i = 0; i<16; i++)
+				tmp[i] = store[o1[i]];
+			break;
+		case 1:
+			for (uint8_t i = 0; i<16; i++)
+				tmp[i] = store[o2[i]];
+			break;
+		case 2:
+			for (uint8_t i = 0; i<16; i++)
+				tmp[i] = store[o3[i]];
+			break;
+		case 3:
+			for (uint8_t i = 0; i<16; i++)
+				tmp[i] = store[o4[i]];
+			break;
+	}
+	free ( store );
+	store = tmp;
+
+}
+
+
+
+inline void aswitch( uint8_t a, uint8_t b, uint32_t * c){
+	uint32_t tmp = c[a];
+	c[a] = c[b];
+	c[b] = tmp;
+}
 
 char * update_white( uint8_t id, uint8_t pwm){
 	can_send_white( id, pwm, 1, -1);
@@ -142,7 +180,7 @@ char * update_pixel(uint8_t id, uint8_t x, uint8_t y, char *buffer ){
 	JsonAllocator allocator;
 
 	// parsing values to store
-	uint32_t store[3];
+	uint32_t store[3] = {0};
 		
 	// actually parsing 
 	uint8_t status = jsonParse(buffer, &end, &value, allocator);	
@@ -164,7 +202,7 @@ char * update_pixel(uint8_t id, uint8_t x, uint8_t y, char *buffer ){
     
     // check boundaries before updating ( or segfault )
     if ( x< 4 && y < 4 && id < 64){
-    	can_send_pixel1(4,id,store[0],store[1], store[2], y*4+x);
+    	can_send_pixel1(0,id,store[0],store[1], store[2], y*4+x);
     	mqtt_propagate(id,&addr,&s,1 );
     	ceiling[id].set_pixel(x,y,store[0],store[1],store[2]);
     }
@@ -195,7 +233,8 @@ char * update_panel(uint8_t id, char *buffer ){
 	
 	uint8_t j = 0;
 	for (auto i : value) {
-		store[j] = uint32_t(i->value.toNumber());
+		if (j<16)
+			store[j] = uint32_t(i->value.toNumber());
 		printf("(%lu)[%lu,%lu,%lu]\n", store[j],store[j] & 0xFF, (store[j] & 0xFF00) >> 8, (store[j] & 0xFF0000) >> 16);
 		j++;
     }
@@ -204,6 +243,8 @@ char * update_panel(uint8_t id, char *buffer ){
 
     if ( id < 64)
     	send_panel( id, store );
+
+    return NULL;
 }
 
 //
@@ -220,10 +261,11 @@ inline void send_panel ( uint8_t id, uint32_t * store){
 		
 		uint8_t m = p[0] - p[0]%4;
 		uint8_t i = 1;
-
+		printf("%i values changed!\n", p[0]);
 		// sending in most efficient packets (4pixel pp)
-		for ( ; i+3 < m; i=i+4){
-			// dont create temporary array if addresses are usccsessive values
+		for ( ; i+3 <= m; i=i+4){
+			// dont create temporary array if addresses are succsessive values
+			printf("Sent 4p\n");
 			if (  (p[i+1] - p[i]) - (p[i+3] - p[i+2]) == 0)
 				can_send_pixel4(4, id, &store[p[i]], &p[i]);
 			else {

@@ -75,7 +75,7 @@ uint8_t can_send_pixel4( uint8_t update_mode, uint8_t panel_address, uint32_t *r
 	uint8_t nbytes;
 	struct can_frame frame;
 
-	frame.can_id  = panel_address << 3 + update_mode + (pixel_address[0] << 25) + (pixel_address[1] << 21) + (pixel_address[2] << 17) + (pixel_address[3] << 13) + 0x80000000;
+	frame.can_id  = (panel_address) << 3 + update_mode + (pixel_address[0] << 25) + (pixel_address[1] << 21) + (pixel_address[2] << 17) + (pixel_address[3] << 13) + 0x80000000;
 	frame.can_dlc = 2;
 	for ( uint8_t i = 0; i< 4; i++){
 		uint16_t p = to565(rgb[i]);
@@ -98,10 +98,12 @@ uint8_t can_send_pixel1( uint8_t update_mode, uint8_t panel_address, uint8_t r, 
 	struct can_frame frame;
 	memset ( frame.data, '\0', sizeof(uint8_t) * 8);
 
-	frame.can_id  = panel_address << 3 + update_mode + (pixel_address << 25) + (pixel_address << 21) + (pixel_address << 17) + (r << 9 ) + 0x80000000;
+	frame.can_id  = (panel_address << 3) + update_mode + (pixel_address << 25) + (r << 9 ) + 0x80000000;
 	frame.can_dlc = 2;
 	frame.data[0] = b;
 	frame.data[1] = g;
+
+	printf("ID: %lu", frame.can_id);
 
 	nbytes = send(can_socket, &frame, sizeof(struct can_frame),0);
 
@@ -117,7 +119,7 @@ uint8_t can_send_pixel2( uint8_t update_mode, uint8_t panel_address, uint8_t *r,
 	memset ( frame.data, '\0', sizeof(uint8_t) * 8);
 
 
-	frame.can_id  = panel_address << 3 + update_mode + (pixel_address[0] << 25) + (pixel_address[1] << 21) + (pixel_address[1] << 17) + (r[0] << 9 ) + + 0x80000000;
+	frame.can_id  = (panel_address << 3) + update_mode + (pixel_address[0] << 25) + (pixel_address[1] << 21) + (pixel_address[1] << 17) + (r[0] << 9 ) + + 0x80000000;
 	frame.can_dlc = 5;
 	frame.data[0] = g[0];
 	frame.data[1] = b[0];

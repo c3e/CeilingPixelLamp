@@ -51,7 +51,7 @@ void setup() {
     }
     Serial.println("CAN BUS Shield init ok!");
     
-    //attachInterrupt(0, recvData, FALLING); // start interrupt
+    attachInterrupt(3, recvData, FALLING); // start interrupt
 
 	Serial.print("Setup complete");
 }
@@ -98,11 +98,11 @@ inline void recvData (){
 	p_addr[0] = (id >> 25) & 15;
 	p_addr[1] = (id >> 21) & 15;
 	p_addr[2] = (id >> 17) & 15;
-	
+  
 	uint8_t tmp = ( id >> 9) & 0xFF;
 
-	if ( (( id >> 3 ) & 127 ) == ADDRESS && control_bits != 3){
-		
+	if ( (( id >> 3 ) & 63 ) == ADDRESS && control_bits != 3){
+		Serial.println((id >> 3)& 63);
 		switch (control_bits) {
 			
 			case 0: //sync 
@@ -181,7 +181,7 @@ inline void recvData (){
 				break;
 
 			case 7: //sync one/two
-				LED.set_crgb_at( p_addr[0] , { id & 0xFF,buf[0],buf[1] } );
+				LED.set_crgb_at( p_addr[0] , { (uint8_t)(id & 0xFF),buf[0],buf[1] } );
 
 				break;
 
@@ -378,6 +378,7 @@ void loop() {
 		ledDistance();
     	delay(10);
 	}
+ delay(10);
 	if(CAN_MSGAVAIL == CAN0.checkReceive()) 
 		recvData();
 }
