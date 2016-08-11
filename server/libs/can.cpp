@@ -52,13 +52,13 @@ uint8_t can_send_pixeln( uint8_t update_mode, uint8_t panel_address, uint32_t *r
 	uint8_t g[n];
 	uint8_t b[n];
 	for ( uint8_t i = 0; i<n; i++){
-		r[i] = rgb[i] & 0xFF0000 >> 16;
-		g[i] = rgb[i] & 0xFF00 >> 8;
-		b[i] = rgb[i] & 0xFF,rgb[1] & 0xFF;
+		r[i] = (rgb[i] & 0xFF0000) >> 16;
+		g[i] = (rgb[i] & 0xFF00) >> 8;
+		b[i] = rgb[i] & 0xFF;
 	}
 	switch (n){
 		case 1:
-			return can_send_pixel1( update_mode, panel_address, rgb[0] & 0xFF0000 >> 16, rgb[0] & 0xFF00 >> 8, rgb[0] & 0xFF, pixel_address[0]);
+			return can_send_pixel1( update_mode, panel_address, (rgb[0] & 0xFF0000) >> 16, (rgb[0] & 0xFF00) >> 8, rgb[0] & 0xFF, pixel_address[0]);
 
 		case 2:
 			can_send_pixel2( update_mode, panel_address, r, g, b, pixel_address);
@@ -75,7 +75,7 @@ uint8_t can_send_pixel4( uint8_t update_mode, uint8_t panel_address, uint32_t *r
 	uint8_t nbytes;
 	struct can_frame frame;
 
-	frame.can_id  = (panel_address) << 3 + update_mode + (pixel_address[0] << 25) + (pixel_address[1] << 21) + (pixel_address[2] << 17) + (pixel_address[3] << 13) + 0x80000000;
+	frame.can_id  = ((panel_address) << 3) + update_mode + (pixel_address[0] << 25) + (pixel_address[1] << 21) + (pixel_address[2] << 17) + (pixel_address[3] << 13) + 0x80000000;
 	frame.can_dlc = 2;
 	for ( uint8_t i = 0; i< 4; i++){
 		uint16_t p = to565(rgb[i]);

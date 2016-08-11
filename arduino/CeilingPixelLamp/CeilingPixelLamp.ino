@@ -51,7 +51,7 @@ void setup() {
     }
     Serial.println("CAN BUS Shield init ok!");
     
-    attachInterrupt(3, recvData, FALLING); // start interrupt
+    //attachInterrupt(0, recvData, FALLING); // start interrupt
 
 	Serial.print("Setup complete");
 }
@@ -79,30 +79,36 @@ inline void recvData (){
 	CAN0.readMsgBuf(&len, buf);
 	uint32_t id = CAN0.getCanId();
 	uint8_t control_bits = id & 7;
-	if (debug){
-		Serial.print("(CAN) Id: ");
-		Serial.print(id);
-		Serial.print("  ControlBits: ");
-		Serial.println(control_bits);
-	}
 	uint8_t p_addr[4];
 	uint8_t rgb[12];
 	if ( control_bits > 3){
 		for ( size_t i = 0;  i< 4 ; i++){
-				rgb[i*3]   = buf[0] >> 3 ;
-				rgb[i*3+1] = (( buf[0] & 7 ) << 3) + (buf[1] >> 5);
-				rgb[i*3+2] = buf[1] & 31  ;
+				rgb[i*3]   = (buf[0] >> 3) << 3 ;
+				rgb[i*3+1] = ((( buf[0] & 7 ) << 3) + (buf[1] >> 5)) << 2;
+				rgb[i*3+2] = (buf[1] & 31) << 3;
 		}
 		p_addr[3] = (id >> 13) & 15;
 	}
 	p_addr[0] = (id >> 25) & 15;
 	p_addr[1] = (id >> 21) & 15;
 	p_addr[2] = (id >> 17) & 15;
-  
+	
+	if (debug){
+		Serial.print("(CAN) Id: ");
+		Serial.print(id);
+		Serial.print("  ControlBits: ");
+		Serial.print(control_bits);
+		Serial.print("  Addr: ");
+		for ( uint8_t i = 0; i < 4 ; i++){
+			Serial.print(p_addr[i]);
+			Serial.print(",");
+		}
+	}
+
 	uint8_t tmp = ( id >> 9) & 0xFF;
 
-	if ( (( id >> 3 ) & 63 ) == ADDRESS && control_bits != 3){
-		Serial.println((id >> 3)& 63);
+	if ( (( id >> 3 ) & 127 ) == ADDRESS && control_bits != 3){
+		
 		switch (control_bits) {
 			
 			case 0: //sync 
@@ -181,7 +187,7 @@ inline void recvData (){
 				break;
 
 			case 7: //sync one/two
-				LED.set_crgb_at( p_addr[0] , { (uint8_t)(id & 0xFF),buf[0],buf[1] } );
+				LED.set_crgb_at( p_addr[0] , { id & 0xFF,buf[0],buf[1] } );
 
 				break;
 
@@ -378,7 +384,6 @@ void loop() {
 		ledDistance();
     	delay(10);
 	}
- delay(10);
 	if(CAN_MSGAVAIL == CAN0.checkReceive()) 
 		recvData();
 }

@@ -78,11 +78,13 @@ tile::tile ( uint8_t r,uint8_t g,uint8_t b){
 uint8_t * tile::compare ( uint32_t * input ){
 	static uint8_t a [17];
 	uint8_t p = 0;
-	for ( uint8_t i = 1; i<16; i++){
+	for ( uint8_t i = 0; i<16; i++){
 		if (   (input[i] & 0xFF) != panel[i][2] 
 			 || ((input[i] & 0xFF00) >> 8 ) != panel[i][1]
-			 || ((input[i] & 0xFF0000) >> 16 ) != panel[i][0])
-			a[p++] = i;
+			 || ((input[i] & 0xFF0000) >> 16 ) != panel[i][0] ){
+			a[p+1] = i;
+			p++;
+		}
 	}
 	a[0] = p;
 	return p == 0 ? NULL : a; //probably faulty
@@ -108,37 +110,46 @@ uint8_t o2[16] = {0,7,8,15,1,6,9,14,2,5,10,13,3,4,11,12};
 uint8_t o3[16] = {15,14,13,12,8,9,10,11,7,6,5,4,0,1,2,3};
 uint8_t o4[16] = {12,11,4,3,13,10,5,2,14,9,6,1,15,8,7,0};
 
-inline void reorder( uint8_t orientation, uint32_t * store ){
-	uint32_t * tmp = (uint32_t*) malloc(sizeof(uint32_t)*16);
-	switch (orientation) {
+uint8_t orient( uint8_t val, uint8_t o ){
+	switch (o) {
 		case 0:
-			for (uint8_t i = 0; i<16; i++)
-				tmp[i] = store[o1[i]];
-			break;
+		return o1[val];
+		break;
 		case 1:
-			for (uint8_t i = 0; i<16; i++)
-				tmp[i] = store[o2[i]];
-			break;
+		return o2[val];
+		break;
 		case 2:
-			for (uint8_t i = 0; i<16; i++)
-				tmp[i] = store[o3[i]];
-			break;
+		return o3[val];
+		break;
 		case 3:
-			for (uint8_t i = 0; i<16; i++)
-				tmp[i] = store[o4[i]];
-			break;
+		return o3[val];
+		break;
 	}
-	free ( store );
-	store = tmp;
-
+	return 0;
 }
 
-
-
-inline void aswitch( uint8_t a, uint8_t b, uint32_t * c){
-	uint32_t tmp = c[a];
-	c[a] = c[b];
-	c[b] = tmp;
+inline void reorder( uint8_t orientation, uint8_t * addr ){
+	uint8_t * n = (uint8_t *)malloc(sizeof(uint8_t)*addr[0]);
+	switch (orientation) {
+		case 0: 
+			for ( uint8_t i =0; i < addr[0]; i++)
+				n[i] = o1[addr[i+1]];
+			break;
+		case 1: 
+			for ( uint8_t i =0; i < addr[0]; i++)
+				n[i] = o2[addr[i+1]];
+			break;
+		case 2: 
+			for ( uint8_t i =0; i < addr[0]; i++)
+				n[i] = o3[addr[i+1]];
+			break;
+		case 3: 
+			for ( uint8_t i =0; i < addr[0]; i++)
+				n[i] = o4[addr[i+1]];
+			break;
+	}
+	//free(addr);
+	addr = n;
 }
 
 char * update_white( uint8_t id, uint8_t pwm){
@@ -160,9 +171,10 @@ char * update_off(uint8_t id){
 }
 
 
-void update_orientation ( uint8_t id, uint8_t o){
+char * update_orientation ( uint8_t id, uint8_t o){
 	ceiling[id].orientation = o;
-	can_send_white(id, 0, 1, o);
+	//can_send_white(id, 0, 1, o);
+	return NULL;
 }
 
 //
@@ -190,7 +202,8 @@ char * update_pixel(uint8_t id, uint8_t x, uint8_t y, char *buffer ){
 	}
 	uint8_t j = 0;
 	for (auto i : value) {
-		store[j] = uint8_t(i->value.toNumber());
+		if (j<3)
+			store[j] = uint8_t(i->value.toNumber());
 		j++;
     }
 
@@ -202,7 +215,7 @@ char * update_pixel(uint8_t id, uint8_t x, uint8_t y, char *buffer ){
     
     // check boundaries before updating ( or segfault )
     if ( x< 4 && y < 4 && id < 64){
-    	can_send_pixel1(0,id,store[0],store[1], store[2], y*4+x);
+    	can_send_pixel1(0,id,store[0],store[1], store[2], orient(y*4+x+1, ceiling[id].orientation));
     	mqtt_propagate(id,&addr,&s,1 );
     	ceiling[id].set_pixel(x,y,store[0],store[1],store[2]);
     }
@@ -235,7 +248,7 @@ char * update_panel(uint8_t id, char *buffer ){
 	for (auto i : value) {
 		if (j<16)
 			store[j] = uint32_t(i->value.toNumber());
-		printf("(%lu)[%lu,%lu,%lu]\n", store[j],store[j] & 0xFF, (store[j] & 0xFF00) >> 8, (store[j] & 0xFF0000) >> 16);
+		printf("(%lu)[%lu,%lu,%lu]\n", store[j],(store[j] & 0xFF0000) >> 16, (store[j] & 0xFF00) >> 8, (store[j] & 0xFF));
 		j++;
     }
 
@@ -254,11 +267,16 @@ char * update_panel(uint8_t id, char *buffer ){
 inline void send_panel ( uint8_t id, uint32_t * store){
 
 	// p[0] contains size of array
+	// check if there are any differences to our internal data model
 	uint8_t * p = ceiling[id].compare(store);
+
+	// reorder due to individiual rotation of panels
+	// takes care of length in first value
+	//reorder(ceiling[id].orientation, p);
 
 	// check if CAN is initialized
 	if ( CAN_STARTED && p != NULL){
-		
+		uint32_t store4[4];
 		uint8_t m = p[0] - p[0]%4;
 		uint8_t i = 1;
 		printf("%i values changed!\n", p[0]);
@@ -266,19 +284,17 @@ inline void send_panel ( uint8_t id, uint32_t * store){
 		for ( ; i+3 <= m; i=i+4){
 			// dont create temporary array if addresses are succsessive values
 			printf("Sent 4p\n");
-			if (  (p[i+1] - p[i]) - (p[i+3] - p[i+2]) == 0)
-				can_send_pixel4(4, id, &store[p[i]], &p[i]);
-			else {
-				uint32_t store4[4];
-				for ( uint8_t j = 0; j< 4; j++)
-					store4[j] = store[p[j+i]];
-				can_send_pixel4(4, id, store4, &p[i]);
-			}
+			for ( uint8_t j = 0; j< 4; j++)
+				store4[j] = store[p[j+i]];
+			can_send_pixel4(4, id, store4, &p[i]);
 		}
-		uint32_t store3[3];
-		for ( uint8_t j = 0; j< 3; j++)
-			store3[j] = store[p[j+i]];
-		can_send_pixeln( 4, id, store3, &p[i], p[0]%4 );
+		
+		if ( p[0] % 4 != 0){
+			uint32_t store3[3];
+			for ( uint8_t j = 0; j< 3; j++)
+				store3[j] = store[p[j+i]];
+			can_send_pixeln( 4, id, store3, &p[i], p[0]%4 );
+		}
 	}
 
 	// update mqtt values with p offset
@@ -330,7 +346,7 @@ char * api( char * p, evhttp_request * req){
 	}
 	if ( !s.empty() ) 
 		args[i] = s;
-	//Seriously!
+	//Seriously! ie. Something that is actually safe!
 
 	for ( int k = 0; k < 10 ; k++){
 		printf("%i: %s\n",k,args[k].c_str() );
@@ -356,8 +372,9 @@ char * api( char * p, evhttp_request * req){
 			ret = update_on(atoi (args[4].c_str()));
 		} else if ( args[3].compare("off") == 0){
 			ret = update_off(atoi (args[4].c_str()));
+		} else if ( args[3].compare("orient") == 0){
+			ret = update_orientation( atoi (args[4].c_str() ), atoi(args[5].c_str()) );
 		}
-
 
 	} else if ( strncmp(args[2].c_str(), "get", 3 ) == 0){
 		if ( strncmp(args[3].c_str(),"panel",5) == 0 ){

@@ -72,12 +72,18 @@ static inline int char2int(char c) {
 
 static double string2double(char *s, char **endptr) {
     char ch = *s;
+    unsigned char mod = 10;
     if (ch == '-')
         ++s;
+    if (ch == 'x'){
+        mod = 16;
+        ++s;
+    }
+
 
     double result = 0;
-    while (isdigit(*s))
-        result = (result * 10) + (*s++ - '0');
+    while (isxdigit(*s))
+        result = (result * mod) + char2int(*s++);
 
     if (*s == '.') {
         ++s;
@@ -165,6 +171,14 @@ int jsonParse(char *s, char **endptr, JsonValue *value, JsonAllocator &allocator
         case '7':
         case '8':
         case '9':
+        case 'A':
+        case 'B':
+        case 'C':
+        case 'D':
+        case 'E':
+        case 'F':
+        case 'x':
+        
             o = JsonValue(string2double(*endptr, &s));
             if (!isdelim(*s)) {
                 *endptr = s;
