@@ -25,9 +25,9 @@ uint8_t whiteStart = 0;
 
 uint8_t pixelbuffer[NUM_LEDS_PER_LINE*NUM_LINES*4];
 uint8_t pixelbuffer_reswizzle[NUM_LEDS_PER_LINE*32];
-#define CYCLES_800_T0H  (F_CPU / 4000000)
-#define CYCLES_800_T1H  (F_CPU / 1250000)
-#define CYCLES_800      (F_CPU /  800000)
+//#define CYCLES_800_T0H  (F_CPU / 4000000)
+//#define CYCLES_800_T1H  (F_CPU / 1250000)
+//#define CYCLES_800      (F_CPU /  800000)
 
 #define CYCLES_800_T0H  25
 #define CYCLES_800_T1H  64
@@ -41,7 +41,7 @@ void WriteBytes(uint8_t* pixels, int numBytes){
 	cli();
 
 	uint8_t	 *p   = pixels;
-	uint8_t	 *end = p + numBytes
+	uint8_t	 *end = p + numBytes;
 	uint8_t   pix;
 	uint32_t  cyc;
 
@@ -143,6 +143,7 @@ void WriteBytes(uint8_t* pixels, int numBytes){
 	sei();
 }
 
+// GPIO_CONFIG points to System Clock Gating Control Register 5 (SIM_SCGC5)
 #define GPIO_CONFIG  (*(volatile unsigned short *)0x40048038)
 
 void setup() {
@@ -153,7 +154,14 @@ void setup() {
 	pinMode(13, OUTPUT);
 	digitalWrite(13, HIGH);
 
-	GPIO_CONFIG = ((unsigned short)0x00043F82); // 0b1000011111110000010
+	//GPIO_CONFIG = ((unsigned short)0x00043F82); // 0b1000011111110000010
+
+
+	GPIO_CONFIG |= 		(1 << 9)	// Enable Clock on PORT A
+				 	  | (1 << 10)	// Enable Clock on PORT B
+				 	  | (1 << 11)	// Enable Clock on PORT C
+				 	  | (1 << 12)	// Enable Clock on PORT D
+				 	  | (1 << 13);	// Enable Clock on PORT E
 
 	// Pin 0 on Port D -> Pin "2"
 	// PCR Pin Control Register
@@ -165,7 +173,12 @@ void setup() {
 	PORTD_PCR4 = PORT_PCR_MUX(0x1);
 	// Set Pin 0 - 4 as Output
 	// PDDR Port Data Direction Register
-	GPIOD_PDDR = (1 << 4) | (1 << 3) | (1 << 2) | (1 << 1) | (1 << 0);
+	GPIOD_PDDR |= 		(1 << 4)	// Set Pin 5 on PORT D as Output
+					  | (1 << 3)	// Set Pin 4 on PORT D as Output
+					  | (1 << 2)	// Set Pin 3 on PORT D as Output
+					  | (1 << 1)	// Set Pin 2 on PORT D as Output
+					  | (1 << 0);	// Set Pin 1 on PORT D as Output
+	
 	// Set Pin 2 High
 	// PDOR Port Data Output Register
 	// Set logic level to 1
