@@ -1,6 +1,10 @@
+/**@file */
 // a lesson was learned but the damage is irreversible
-#define NUM_LINES 3
-#define NUM_LEDS_PER_LINE (3*64)
+// number of panel rows
+#define NUM_LINES 5 // number of panel rows
+#define NUM_COLUMNS 3 // number of panel columns
+#define NUM_LEDS_PER_PANEL 64 // number of leds per panel
+#define NUM_LEDS_PER_LINE (NUM_COLUMNS * NUM_LEDS_PER_PANEL)
 
 uint8_t gammaCorrection[] = {
 	0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
