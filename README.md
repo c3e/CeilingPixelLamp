@@ -1,4 +1,4 @@
-# CeilingPixelLamp [![Build Status](https://travis-ci.org/c3e/CeilingPixelLamp.png?branch=master)](https://travis-ci.org/c3e/CeilingPixelLamp)
+# CeilingPixelLamp [![Build Status](https://travis-ci.org/c3e/CeilingPixelLamp.png?branch=master)](https://travis-ci.org/c3e/CeilingPixelLamp) [![HitCount](http://hits.dwyl.com/c3e/CeilingPixelLamp.svg)](http://hits.dwyl.com/c3e/CeilingPixelLamp)
 Arduino code based rgbw ceiling pixel lamp
 
 ## Description:
